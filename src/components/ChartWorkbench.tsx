@@ -24,6 +24,7 @@ type Props = {
   logPrice: boolean
   profileVisible: boolean
   cleanMode: boolean
+  fontScale: 'standard' | 'large' | 'xlarge'
   onHoverBar: (bar: StockBar | null) => void
   onSelectBar: (bar: StockBar) => void
 }
@@ -44,7 +45,7 @@ function formatVolume(value: number) {
   return `${value}`
 }
 
-export function ChartWorkbench({ logPrice, profileVisible, onHoverBar, onSelectBar }: Props) {
+export function ChartWorkbench({ logPrice, profileVisible, fontScale, onHoverBar, onSelectBar }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
@@ -59,6 +60,8 @@ export function ChartWorkbench({ logPrice, profileVisible, onHoverBar, onSelectB
     const host = hostRef.current
     if (!host) return
 
+    const chartFontSize = fontScale === 'standard' ? 15 : fontScale === 'large' ? 16 : 18
+    const priceScaleWidth = fontScale === 'xlarge' ? 92 : fontScale === 'large' ? 84 : 78
     const chart = createChart(host, {
       width: host.clientWidth,
       height: host.clientHeight,
@@ -66,7 +69,7 @@ export function ChartWorkbench({ logPrice, profileVisible, onHoverBar, onSelectB
         background: { type: ColorType.Solid, color: '#ffffff' },
         textColor: '#535967',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif',
-        fontSize: 15,
+        fontSize: chartFontSize,
         attributionLogo: false,
         panes: {
           separatorColor: '#e5e8ee',
@@ -86,7 +89,7 @@ export function ChartWorkbench({ logPrice, profileVisible, onHoverBar, onSelectB
         visible: true,
         borderColor: '#dde1e8',
         scaleMargins: { top: 0.09, bottom: 0.08 },
-        minimumWidth: 78,
+        minimumWidth: priceScaleWidth,
       },
       leftPriceScale: { visible: false },
       timeScale: {
@@ -299,7 +302,7 @@ export function ChartWorkbench({ logPrice, profileVisible, onHoverBar, onSelectB
       chartRef.current = null
       candleRef.current = null
     }
-  }, [byDate, onHoverBar, onSelectBar])
+  }, [byDate, fontScale, onHoverBar, onSelectBar])
 
   useEffect(() => {
     const series = candleRef.current

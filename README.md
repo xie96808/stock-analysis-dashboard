@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- 阶段：P0 可视化原型已完成并通过构建、浏览器运行与交互验收。
+- 阶段：P1 视觉骨架与本地工程化已完成；P0 基线保留为 `v0.1.0-p0`。
 - 运行形式：本机 Web 应用，桌面浏览器优先，平板横屏为第二优先级。
 - 设计基准：用户提供的 TradingView 截图与同花顺对比截图。
 - 核心需求：横轴按真实日期自由缩放和延伸；纵轴支持普通价格与 Log 价格切换。
@@ -16,23 +16,42 @@
 - [开发计划](./docs/DEVELOPMENT_PLAN.md)
 - [P0 验收记录](./docs/P0_REPORT.md)
 - [P0 界面预览](./docs/p0-preview.jpg)
+- [P1 验收记录](./docs/P1_REPORT.md)
+- [P1 1440×900 预览](./docs/p1-preview-1440x900.jpg)
+- [P1 1920×1080 预览](./docs/p1-preview-1920x1080.jpg)
 
 ## 本地运行
 
 ```bash
-git clone https://github.com/<YOUR_ACCOUNT>/stock-analysis-dashboard.git
+git clone https://github.com/xie96808/stock-analysis-dashboard.git
 cd stock-analysis-dashboard
-npm install --cache /tmp/codex-npm-cache
-npm run dev
+npm install
+npm run app
 ```
 
-浏览器打开：`http://127.0.0.1:4173/`
+`npm run app` 会创建本地 Python 虚拟环境、安装 FastAPI 依赖，并同时启动：
+
+- 看板：`http://127.0.0.1:4173/`
+- 本地 API：`http://127.0.0.1:8000/`
+- API 文档：`http://127.0.0.1:8000/docs`
 
 生产构建：
 
 ```bash
 npm run build
+npm run test:backend
 ```
+
+## P1 已实现
+
+- React/Vite 前端与 FastAPI 本地后端工程边界；
+- `/api/health` 健康检查与 `/api/demo/snapshot/001280` 样例接口；
+- `./start.sh` 与 `npm run app` 一键启动；
+- 标准/大/特大三档字号，默认使用大字号并保存在本机；
+- Lightweight Charts 坐标字号随界面档位同步变化；
+- 1440×900、1920×1080 视觉基线及 2560×1440 辅助检查；
+- API 断开时自动回退到前端确定性样例，不影响画布查看；
+- P0 的 Log/普通轴、日K/分时、日历和工具提示交互继续通过回归。
 
 ## P0 已实现
 
@@ -57,3 +76,7 @@ npm run build
 6. **预测可追溯**：每次分析按日期归档当时的文字、图形、截图和数据截止时间，后续修订保留版本历史。
 7. **数据可迁移**：记录使用标准 Markdown，图形和布局使用版本化 JSON，可单条导出或整体 ZIP 备份恢复。
 8. **历史由用户控制**：记录可加载、恢复到工作区、移入回收站或永久删除。
+
+## License
+
+[MIT](./LICENSE)

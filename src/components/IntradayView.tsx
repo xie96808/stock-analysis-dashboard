@@ -14,6 +14,7 @@ import { createIntradayFixture, type StockBar } from '../data/fixture'
 
 type Props = {
   bar: StockBar
+  fontScale: 'standard' | 'large' | 'xlarge'
 }
 
 function formatShanghaiTime(time: Time) {
@@ -26,7 +27,7 @@ function formatShanghaiTime(time: Time) {
   }).format(new Date(time * 1000))
 }
 
-export function IntradayView({ bar }: Props) {
+export function IntradayView({ bar, fontScale }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const points = useMemo(() => createIntradayFixture(bar), [bar])
 
@@ -34,6 +35,8 @@ export function IntradayView({ bar }: Props) {
     const host = hostRef.current
     if (!host) return
 
+    const chartFontSize = fontScale === 'standard' ? 15 : fontScale === 'large' ? 16 : 18
+    const priceScaleWidth = fontScale === 'xlarge' ? 92 : fontScale === 'large' ? 84 : 78
     const chart = createChart(host, {
       width: host.clientWidth,
       height: host.clientHeight,
@@ -41,7 +44,7 @@ export function IntradayView({ bar }: Props) {
         background: { type: ColorType.Solid, color: '#ffffff' },
         textColor: '#535967',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif',
-        fontSize: 15,
+        fontSize: chartFontSize,
         attributionLogo: false,
         panes: {
           separatorColor: '#e5e8ee',
@@ -61,7 +64,7 @@ export function IntradayView({ bar }: Props) {
       rightPriceScale: {
         borderColor: '#dde1e8',
         scaleMargins: { top: 0.12, bottom: 0.1 },
-        minimumWidth: 78,
+        minimumWidth: priceScaleWidth,
       },
       timeScale: {
         borderColor: '#dde1e8',
@@ -129,7 +132,7 @@ export function IntradayView({ bar }: Props) {
       observer.disconnect()
       chart.remove()
     }
-  }, [bar, points])
+  }, [bar, fontScale, points])
 
   return (
     <div className="intraday-stage">

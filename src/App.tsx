@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { getApiHealth, getDemoSnapshot, type ApiHealth } from './api/client'
 import { ChartWorkbench } from './components/ChartWorkbench'
 import { Icon } from './components/Icon'
 import { IntradayView } from './components/IntradayView'
@@ -7,6 +8,8 @@ import { fixtureBars, type StockBar } from './data/fixture'
 import './styles.css'
 
 const timeframes = ['1分', '5分', '15分', '30分', '60分', '日K', '周K', '月K']
+
+type FontScale = 'standard' | 'large' | 'xlarge'
 
 const tools = [
   ['cursor', '选择'],
@@ -82,7 +85,13 @@ export default function App() {
   const [workspace, setWorkspace] = useState('主分析')
   const [note, setNote] = useState('')
   const [records, setRecords] = useState(initialRecords)
-  const [toast, setToast] = useState('P0 演示数据 · 2026-08-07 收盘')
+  const [fontScale, setFontScale] = useState<FontScale>(() => {
+    const saved = window.localStorage.getItem('dashboard-font-scale')
+    return saved === 'standard' || saved === 'xlarge' ? saved : 'large'
+  })
+  const [apiHealth, setApiHealth] = useState<ApiHealth | null>(null)
+  const [apiState, setApiState] = useState<'connecting' | 'ready' | 'offline'>('connecting')
+  const [toast, setToast] = useState('P1 工程骨架 · 2026-08-07 样例收盘')
 
   const displayBar = hoverBar ?? lastBar
   const handleHoverBar = useCallback((bar: StockBar | null) => setHoverBar(bar), [])
@@ -101,6 +110,25 @@ export default function App() {
     () => records.filter((record) => record.date === selectedJournalDate),
     [records, selectedJournalDate],
   )
+
+  useEffect(() => {
+    window.localStorage.setItem('dashboard-font-scale', fontScale)
+  }, [fontScale])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    Promise.all([getApiHealth(controller.signal), getDemoSnapshot(controller.signal)])
+      .then(([health, snapshot]) => {
+        if (snapshot.instrument.symbol !== '001280') throw new Error('Unexpected demo fixture')
+        setApiHealth(health)
+        setApiState('ready')
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        setApiState('offline')
+      })
+    return () => controller.abort()
+  }, [])
 
   const notify = (message: string) => {
     setToast(message)
@@ -130,12 +158,12 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-font-scale={fontScale}>
       <header className="app-header">
         <div className="brand" aria-label="研判看板">
           <span className="brand-mark">研</span>
           <span className="brand-name">研判</span>
-          <span className="brand-phase">P0</span>
+          <span className="brand-phase">P1</span>
         </div>
 
         <div className="symbol-search">
@@ -151,6 +179,18 @@ export default function App() {
         </nav>
 
         <div className="header-actions">
+          <label className="font-scale-control">
+            <span>字号</span>
+            <select
+              aria-label="界面字号"
+              value={fontScale}
+              onChange={(event) => setFontScale(event.target.value as FontScale)}
+            >
+              <option value="standard">标准</option>
+              <option value="large">大</option>
+              <option value="xlarge">特大</option>
+            </select>
+          </label>
           <label className="workspace-select">
             <Icon name="layers" />
             <select value={workspace} onChange={(event) => setWorkspace(event.target.value)}>
@@ -272,12 +312,13 @@ export default function App() {
             </div>
           </div>
           {selectedDay ? (
-            <IntradayView bar={selectedDay} />
+            <IntradayView bar={selectedDay} fontScale={fontScale} />
           ) : (
             <ChartWorkbench
               logPrice={logPrice}
               profileVisible={profileVisible && !cleanMode}
               cleanMode={cleanMode}
+              fontScale={fontScale}
               onHoverBar={handleHoverBar}
               onSelectBar={setSelectedDay}
             />
@@ -372,6 +413,9 @@ export default function App() {
         <span>工具：{activeTool}</span>
         <span>坐标：{logPrice ? 'Log 价格' : '普通价格'}</span>
         <span>时区：Asia/Shanghai</span>
+        <span className={`api-state is-${apiState}`}>
+          <i />{apiState === 'ready' ? `本地API · ${apiHealth?.version}` : apiState === 'connecting' ? '正在连接API' : '样例降级模式'}
+        </span>
         <span className="status-spacer" />
         <span>样例数据 · 非实时</span>
         <span>缩放：滚轮 / 触控板</span>

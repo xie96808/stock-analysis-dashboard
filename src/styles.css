@@ -1472,3 +1472,177 @@ button {
     padding: 0 6px;
   }
 }
+
+/* P1 type system: the large preset is intentionally the product default. */
+.app-shell[data-font-scale="standard"] {
+  --font-adjust: 0px;
+  --chart-axis-size: 15px;
+  --journal-width: 326px;
+}
+
+.app-shell[data-font-scale="large"] {
+  --font-adjust: 1px;
+  --chart-axis-size: 16px;
+  --journal-width: 348px;
+}
+
+.app-shell[data-font-scale="xlarge"] {
+  --font-adjust: 3px;
+  --chart-axis-size: 18px;
+  --journal-width: 382px;
+}
+
+.workspace.has-journal {
+  grid-template-columns: 48px minmax(0, 1fr) var(--journal-width);
+}
+
+.font-scale-control {
+  display: flex;
+  height: 34px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 7px 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--muted);
+  font-size: calc(12px + var(--font-adjust));
+}
+
+.font-scale-control select {
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  font-size: calc(13px + var(--font-adjust));
+  font-weight: 650;
+}
+
+.app-shell .brand-name {
+  font-size: calc(18px + var(--font-adjust));
+}
+
+.app-shell .symbol-search input,
+.app-shell .nav-item {
+  font-size: calc(15px + var(--font-adjust));
+}
+
+.app-shell .workspace-select select,
+.app-shell .axis-toggle button,
+.app-shell .timeframes button,
+.app-shell .toolbar-toggle,
+.app-shell .toolbar-action,
+.app-shell .journal-toggle,
+.app-shell .inline-select {
+  font-size: calc(14px + var(--font-adjust));
+}
+
+.app-shell .instrument-title strong {
+  font-size: calc(20px + var(--font-adjust));
+}
+
+.app-shell .instrument-code,
+.app-shell .ohlc-strip b {
+  font-size: calc(15px + var(--font-adjust));
+}
+
+.app-shell .instrument-price strong {
+  font-size: calc(31px + var(--font-adjust));
+}
+
+.app-shell .instrument-price span,
+.app-shell .chart-context strong,
+.app-shell .intraday-legend,
+.app-shell .profile-heading {
+  font-size: calc(13px + var(--font-adjust));
+}
+
+.app-shell .chart-context span,
+.app-shell .pane-label,
+.app-shell .pane-label strong,
+.app-shell .profile-legend,
+.app-shell .intraday-tip {
+  font-size: calc(12px + var(--font-adjust));
+}
+
+.app-shell .journal-header h2,
+.app-shell .journal-summary strong {
+  font-size: calc(17px + var(--font-adjust));
+}
+
+.app-shell .journal-summary button,
+.app-shell .composer-footer button,
+.app-shell .record-copy p,
+.app-shell .journal-footer-button {
+  font-size: calc(12px + var(--font-adjust));
+}
+
+.app-shell .composer-title strong,
+.app-shell .note-composer textarea,
+.app-shell .record-copy h3 {
+  font-size: calc(13px + var(--font-adjust));
+}
+
+.app-shell .calendar-grid button {
+  font-size: calc(12px + var(--font-adjust));
+}
+
+.api-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.api-state i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #a4aab4;
+}
+
+.api-state.is-ready i {
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(26, 155, 117, 0.1);
+}
+
+.api-state.is-offline i {
+  background: var(--amber);
+}
+
+@media (min-width: 1800px) {
+  .app-shell[data-font-scale="large"] {
+    --journal-width: 374px;
+  }
+
+  .app-shell[data-font-scale="xlarge"] {
+    --journal-width: 414px;
+  }
+
+  .app-header {
+    gap: 24px;
+    padding-right: 22px;
+    padding-left: 20px;
+  }
+
+  .quote-header {
+    gap: 34px;
+    padding-right: 24px;
+    padding-left: 22px;
+  }
+
+  .ohlc-strip {
+    gap: 28px;
+  }
+}
+
+@media (max-width: 1280px) {
+  .app-shell[data-font-scale="large"],
+  .app-shell[data-font-scale="xlarge"] {
+    --journal-width: 310px;
+  }
+
+  .font-scale-control > span {
+    display: none;
+  }
+}
