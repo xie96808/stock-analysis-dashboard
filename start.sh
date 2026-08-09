@@ -37,29 +37,73 @@ if [[ ! -d "$ROOT_DIR/node_modules" ]]; then
   npm install
 fi
 
-printf 'Starting API at http://127.0.0.1:8000 ...\n'
-"$VENV_DIR/bin/python" -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 &
-BACKEND_PID=$!
+api_is_ready() {
+  curl --noproxy '*' --max-time 1 --silent --fail http://127.0.0.1:8000/api/health >/dev/null 2>&1
+}
+
+dashboard_is_ready() {
+  curl --noproxy '*' --max-time 1 --silent --fail http://127.0.0.1:4173/ 2>/dev/null | grep -q '<title>研判'
+}
+
+port_is_open() {
+  "$VENV_DIR/bin/python" - "$1" <<'PY'
+import socket
+import sys
+
+with socket.socket() as connection:
+    connection.settimeout(0.3)
+    raise SystemExit(0 if connection.connect_ex(("127.0.0.1", int(sys.argv[1]))) == 0 else 1)
+PY
+}
+
+BACKEND_PID=""
+
+if api_is_ready; then
+  printf 'Reusing dashboard API at http://127.0.0.1:8000 ...\n'
+elif port_is_open 8000; then
+  printf 'Port 8000 is occupied by another service. Stop it or set a different backend port before starting.\n' >&2
+  exit 1
+else
+  printf 'Starting API at http://127.0.0.1:8000 ...\n'
+  "$VENV_DIR/bin/python" -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 &
+  BACKEND_PID=$!
+fi
 
 cleanup() {
-  kill "$BACKEND_PID" 2>/dev/null || true
-  wait "$BACKEND_PID" 2>/dev/null || true
+  if [[ -n "$BACKEND_PID" ]]; then
+    kill "$BACKEND_PID" 2>/dev/null || true
+    wait "$BACKEND_PID" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT INT TERM
 
 for _ in {1..40}; do
-  if curl --noproxy '*' --max-time 1 --silent --fail http://127.0.0.1:8000/api/health >/dev/null 2>&1; then
+  if api_is_ready; then
     break
   fi
-  if ! kill -0 "$BACKEND_PID" 2>/dev/null; then
+  if [[ -n "$BACKEND_PID" ]] && ! kill -0 "$BACKEND_PID" 2>/dev/null; then
     printf 'Backend exited before becoming ready.\n' >&2
     exit 1
   fi
   sleep 0.25
 done
 
-if ! curl --noproxy '*' --max-time 1 --silent --fail http://127.0.0.1:8000/api/health >/dev/null 2>&1; then
+if ! api_is_ready; then
   printf 'Backend did not become ready in 10 seconds.\n' >&2
+  exit 1
+fi
+
+if dashboard_is_ready; then
+  printf 'Dashboard is already running at http://127.0.0.1:4173/\n'
+  if [[ -n "$BACKEND_PID" ]]; then
+    printf 'Press Ctrl+C to stop the API started by this command.\n'
+    wait "$BACKEND_PID"
+  fi
+  exit 0
+fi
+
+if port_is_open 4173; then
+  printf 'Port 4173 is occupied by another service. Stop it before starting the dashboard.\n' >&2
   exit 1
 fi
 

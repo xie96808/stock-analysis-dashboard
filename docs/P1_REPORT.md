@@ -33,6 +33,7 @@ P1仍使用确定性样例。A/H股真实行情Provider、分钟/日线缓存和
 npm run typecheck             PASS
 npm run build                 PASS
 npm run test:backend          2 passed
+重复运行 npm run app          PASS，复用现有服务
 GET /api/health               200 OK
 GET /api/demo/snapshot/001280 200 OK
 browser console errors        0
