@@ -46,7 +46,7 @@ browser console warnings      0
 28 modules transformed
 dist/index.html                  0.46 kB
 dist/assets/index-U6jcObnf.css  21.33 kB
-dist/assets/index-U4kFL38g.js  391.73 kB
+dist/assets/index-CgaWuTeI.js  391.91 kB
 ```
 
 ## 视觉与交互验收
@@ -77,3 +77,5 @@ dist/assets/index-U4kFL38g.js  391.73 kB
 - 正式画线与持久化：P4；
 - 动态Volume Profile：P5；
 - 研究日志SQLite、版本和导入导出：P6。
+
+用户侧逐项检查请使用 [`P1_ACCEPTANCE_CHECKLIST.md`](./P1_ACCEPTANCE_CHECKLIST.md)。分钟周期与画图按钮只验收入口布局、悬浮名称和里程碑提示，不验收真实周期数据或绘图行为。

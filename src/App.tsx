@@ -174,8 +174,8 @@ export default function App() {
 
         <nav className="header-nav" aria-label="工作区导航">
           <button className="nav-item is-active">图表</button>
-          <button className="nav-item" onClick={() => notify('策略复盘将在后续阶段接入')}>复盘</button>
-          <button className="nav-item" onClick={() => notify('数据管理将在行情接入阶段开放')}>数据</button>
+          <button className="nav-item" onClick={() => notify('复盘工作流将在 P6 接入')}>复盘</button>
+          <button className="nav-item" onClick={() => notify('数据管理将在 P2 行情接入阶段开放')}>数据</button>
         </nav>
 
         <div className="header-actions">
@@ -199,7 +199,7 @@ export default function App() {
               <option>短线计划</option>
             </select>
           </label>
-          <button className="icon-button" title="导出截图" onClick={() => notify('高清截图导出占位已触发')}><Icon name="camera" /></button>
+          <button className="icon-button" title="导出截图" onClick={() => notify('高清截图导出将在 P7 接入')}><Icon name="camera" /></button>
           <button className="icon-button" title="全屏" onClick={() => notify('全屏模式将在视觉确认后接入')}><Icon name="fullscreen" /></button>
           <button className="icon-button" title="设置" onClick={() => notify('设置面板占位')}><Icon name="settings" /></button>
         </div>
@@ -242,8 +242,12 @@ export default function App() {
               key={item}
               className={item === timeframe ? 'is-active' : ''}
               onClick={() => {
-                setTimeframe(item)
-                notify(`${item} 周期占位已选择；P0 仍展示日线样例`)
+                if (item === '日K') {
+                  setTimeframe(item)
+                  notify('当前正在展示日K样例')
+                  return
+                }
+                notify(`${item}为 P2 功能入口；P1 继续展示日K样例`)
               }}
             >
               {item}
@@ -254,7 +258,7 @@ export default function App() {
         <label className="inline-select">
           <span>前复权</span>
           <Icon name="chevron" />
-          <select aria-label="复权方式" defaultValue="前复权" onChange={(event) => notify(`已选择${event.target.value}占位`)}>
+          <select aria-label="复权方式" defaultValue="前复权" onChange={(event) => notify(`${event.target.value}计算将在 P2 接入；当前样例仍为前复权`)}>
             <option>前复权</option>
             <option>不复权</option>
             <option>后复权</option>
@@ -285,7 +289,7 @@ export default function App() {
               data-tooltip={label}
               onClick={() => {
                 setActiveTool(label)
-                notify(`${label}工具已选择（P0 占位）`)
+                notify(`${label}为 P4 功能入口；P1 仅提供工具选择反馈`)
               }}
             >
               <Icon name={icon} />
@@ -368,7 +372,7 @@ export default function App() {
 
             <div className="record-list-heading">
               <strong>当日时间线</strong>
-              <button onClick={() => notify('历史版本筛选占位')}>全部版本</button>
+              <button onClick={() => notify('历史版本筛选将在 P6 接入')}>全部版本</button>
             </div>
 
             <div className="record-list">
@@ -380,12 +384,12 @@ export default function App() {
                     <h3>{record.title}</h3>
                     <p>{record.body}</p>
                     <div className="record-actions">
-                      <button onClick={() => notify('历史快照只读预览占位')}>查看快照</button>
-                      <button onClick={() => notify('记录已加载到当前工作区占位')}>加载</button>
+                      <button onClick={() => notify('历史快照只读预览将在 P6 接入')}>查看快照</button>
+                      <button onClick={() => notify('从历史记录加载工作区将在 P6 接入')}>加载</button>
                       <button
                         onClick={() => {
                           setRecords((current) => current.filter((item) => item.id !== record.id))
-                          notify('记录已移入回收站占位')
+                          notify('本次会话已删除；持久化回收站将在 P6 接入')
                         }}
                       >删除</button>
                     </div>
@@ -401,7 +405,7 @@ export default function App() {
               )}
             </div>
 
-            <button className="journal-footer-button" onClick={() => notify('完整历史记录占位')}>
+            <button className="journal-footer-button" onClick={() => notify('完整历史记录将在 P6 接入')}>
               查看全部历史记录
               <Icon name="chevron" />
             </button>
