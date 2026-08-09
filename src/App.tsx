@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { getApiHealth, getDemoSnapshot, type ApiHealth } from './api/client'
 import { ChartWorkbench } from './components/ChartWorkbench'
 import { Icon } from './components/Icon'
 import { IntradayView } from './components/IntradayView'
@@ -7,6 +8,8 @@ import { fixtureBars, type StockBar } from './data/fixture'
 import './styles.css'
 
 const timeframes = ['1分', '5分', '15分', '30分', '60分', '日K', '周K', '月K']
+
+type FontScale = 'standard' | 'large' | 'xlarge'
 
 const tools = [
   ['cursor', '选择'],
@@ -82,7 +85,13 @@ export default function App() {
   const [workspace, setWorkspace] = useState('主分析')
   const [note, setNote] = useState('')
   const [records, setRecords] = useState(initialRecords)
-  const [toast, setToast] = useState('P0 演示数据 · 2026-08-07 收盘')
+  const [fontScale, setFontScale] = useState<FontScale>(() => {
+    const saved = window.localStorage.getItem('dashboard-font-scale')
+    return saved === 'standard' || saved === 'xlarge' ? saved : 'large'
+  })
+  const [apiHealth, setApiHealth] = useState<ApiHealth | null>(null)
+  const [apiState, setApiState] = useState<'connecting' | 'ready' | 'offline'>('connecting')
+  const [toast, setToast] = useState('P1 工程骨架 · 2026-08-07 样例收盘')
 
   const displayBar = hoverBar ?? lastBar
   const handleHoverBar = useCallback((bar: StockBar | null) => setHoverBar(bar), [])
@@ -101,6 +110,25 @@ export default function App() {
     () => records.filter((record) => record.date === selectedJournalDate),
     [records, selectedJournalDate],
   )
+
+  useEffect(() => {
+    window.localStorage.setItem('dashboard-font-scale', fontScale)
+  }, [fontScale])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    Promise.all([getApiHealth(controller.signal), getDemoSnapshot(controller.signal)])
+      .then(([health, snapshot]) => {
+        if (snapshot.instrument.symbol !== '001280') throw new Error('Unexpected demo fixture')
+        setApiHealth(health)
+        setApiState('ready')
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        setApiState('offline')
+      })
+    return () => controller.abort()
+  }, [])
 
   const notify = (message: string) => {
     setToast(message)
@@ -130,12 +158,12 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" data-font-scale={fontScale}>
       <header className="app-header">
         <div className="brand" aria-label="研判看板">
           <span className="brand-mark">研</span>
           <span className="brand-name">研判</span>
-          <span className="brand-phase">P0</span>
+          <span className="brand-phase">P1</span>
         </div>
 
         <div className="symbol-search">
@@ -146,11 +174,23 @@ export default function App() {
 
         <nav className="header-nav" aria-label="工作区导航">
           <button className="nav-item is-active">图表</button>
-          <button className="nav-item" onClick={() => notify('策略复盘将在后续阶段接入')}>复盘</button>
-          <button className="nav-item" onClick={() => notify('数据管理将在行情接入阶段开放')}>数据</button>
+          <button className="nav-item" onClick={() => notify('复盘工作流将在 P6 接入')}>复盘</button>
+          <button className="nav-item" onClick={() => notify('数据管理将在 P2 行情接入阶段开放')}>数据</button>
         </nav>
 
         <div className="header-actions">
+          <label className="font-scale-control">
+            <span>字号</span>
+            <select
+              aria-label="界面字号"
+              value={fontScale}
+              onChange={(event) => setFontScale(event.target.value as FontScale)}
+            >
+              <option value="standard">标准</option>
+              <option value="large">大</option>
+              <option value="xlarge">特大</option>
+            </select>
+          </label>
           <label className="workspace-select">
             <Icon name="layers" />
             <select value={workspace} onChange={(event) => setWorkspace(event.target.value)}>
@@ -159,7 +199,7 @@ export default function App() {
               <option>短线计划</option>
             </select>
           </label>
-          <button className="icon-button" title="导出截图" onClick={() => notify('高清截图导出占位已触发')}><Icon name="camera" /></button>
+          <button className="icon-button" title="导出截图" onClick={() => notify('高清截图导出将在 P7 接入')}><Icon name="camera" /></button>
           <button className="icon-button" title="全屏" onClick={() => notify('全屏模式将在视觉确认后接入')}><Icon name="fullscreen" /></button>
           <button className="icon-button" title="设置" onClick={() => notify('设置面板占位')}><Icon name="settings" /></button>
         </div>
@@ -202,8 +242,12 @@ export default function App() {
               key={item}
               className={item === timeframe ? 'is-active' : ''}
               onClick={() => {
-                setTimeframe(item)
-                notify(`${item} 周期占位已选择；P0 仍展示日线样例`)
+                if (item === '日K') {
+                  setTimeframe(item)
+                  notify('当前正在展示日K样例')
+                  return
+                }
+                notify(`${item}为 P2 功能入口；P1 继续展示日K样例`)
               }}
             >
               {item}
@@ -214,7 +258,7 @@ export default function App() {
         <label className="inline-select">
           <span>前复权</span>
           <Icon name="chevron" />
-          <select aria-label="复权方式" defaultValue="前复权" onChange={(event) => notify(`已选择${event.target.value}占位`)}>
+          <select aria-label="复权方式" defaultValue="前复权" onChange={(event) => notify(`${event.target.value}计算将在 P2 接入；当前样例仍为前复权`)}>
             <option>前复权</option>
             <option>不复权</option>
             <option>后复权</option>
@@ -245,7 +289,7 @@ export default function App() {
               data-tooltip={label}
               onClick={() => {
                 setActiveTool(label)
-                notify(`${label}工具已选择（P0 占位）`)
+                notify(`${label}为 P4 功能入口；P1 仅提供工具选择反馈`)
               }}
             >
               <Icon name={icon} />
@@ -272,12 +316,13 @@ export default function App() {
             </div>
           </div>
           {selectedDay ? (
-            <IntradayView bar={selectedDay} />
+            <IntradayView bar={selectedDay} fontScale={fontScale} />
           ) : (
             <ChartWorkbench
               logPrice={logPrice}
               profileVisible={profileVisible && !cleanMode}
               cleanMode={cleanMode}
+              fontScale={fontScale}
               onHoverBar={handleHoverBar}
               onSelectBar={setSelectedDay}
             />
@@ -327,7 +372,7 @@ export default function App() {
 
             <div className="record-list-heading">
               <strong>当日时间线</strong>
-              <button onClick={() => notify('历史版本筛选占位')}>全部版本</button>
+              <button onClick={() => notify('历史版本筛选将在 P6 接入')}>全部版本</button>
             </div>
 
             <div className="record-list">
@@ -339,12 +384,12 @@ export default function App() {
                     <h3>{record.title}</h3>
                     <p>{record.body}</p>
                     <div className="record-actions">
-                      <button onClick={() => notify('历史快照只读预览占位')}>查看快照</button>
-                      <button onClick={() => notify('记录已加载到当前工作区占位')}>加载</button>
+                      <button onClick={() => notify('历史快照只读预览将在 P6 接入')}>查看快照</button>
+                      <button onClick={() => notify('从历史记录加载工作区将在 P6 接入')}>加载</button>
                       <button
                         onClick={() => {
                           setRecords((current) => current.filter((item) => item.id !== record.id))
-                          notify('记录已移入回收站占位')
+                          notify('本次会话已删除；持久化回收站将在 P6 接入')
                         }}
                       >删除</button>
                     </div>
@@ -360,7 +405,7 @@ export default function App() {
               )}
             </div>
 
-            <button className="journal-footer-button" onClick={() => notify('完整历史记录占位')}>
+            <button className="journal-footer-button" onClick={() => notify('完整历史记录将在 P6 接入')}>
               查看全部历史记录
               <Icon name="chevron" />
             </button>
@@ -372,6 +417,9 @@ export default function App() {
         <span>工具：{activeTool}</span>
         <span>坐标：{logPrice ? 'Log 价格' : '普通价格'}</span>
         <span>时区：Asia/Shanghai</span>
+        <span className={`api-state is-${apiState}`}>
+          <i />{apiState === 'ready' ? `本地API · ${apiHealth?.version}` : apiState === 'connecting' ? '正在连接API' : '样例降级模式'}
+        </span>
         <span className="status-spacer" />
         <span>样例数据 · 非实时</span>
         <span>缩放：滚轮 / 触控板</span>

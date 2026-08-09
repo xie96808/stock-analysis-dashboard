@@ -8,3 +8,11 @@ vite.config.d.ts
 .env
 .env.*
 !.env.example
+.venv/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+data/*.db
+data/*.sqlite*
+data/cache/
+data/journal/
