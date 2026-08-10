@@ -1,10 +1,13 @@
 from contextlib import asynccontextmanager
 from datetime import datetime
+from pathlib import Path
+import zipfile
 from zoneinfo import ZoneInfo
 
 import httpx
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 
 from .config import settings
 from .market_data import MarketDataService
@@ -12,14 +15,17 @@ from .market_data.models import Adjustment, BarsResponse, InstrumentPayload, Quo
 from .market_data.symbols import SymbolError
 from .market_data.tencent import ProviderError
 from .schemas import DemoInstrument, DemoSnapshotResponse, HealthResponse
+from .journal import ImportProjectInput, JournalCreateInput, JournalRepository, JournalRevisionInput
 
 
 market_data = MarketDataService(settings.data_dir / "cache" / "market")
+journal = JournalRepository(settings.data_dir)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings.data_dir.mkdir(parents=True, exist_ok=True)
+    journal.initialize()
     yield
 
 
@@ -34,7 +40,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://127.0.0.1:4173", "http://localhost:4173"],
     allow_credentials=False,
-    allow_methods=["GET"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
@@ -86,3 +92,92 @@ async def market_quote(symbol: str) -> QuoteResponse:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except (ProviderError, httpx.HTTPError, ValueError) as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
+
+
+@app.get("/api/journal/records", tags=["journal"])
+async def list_journal_records(
+    date_key: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    symbol: str | None = None,
+    include_deleted: bool = False,
+) -> list[dict]:
+    return journal.list(date_key, symbol, include_deleted)
+
+
+@app.post("/api/journal/records", tags=["journal"])
+async def create_journal_record(payload: JournalCreateInput) -> dict:
+    return journal.create(payload)
+
+
+@app.get("/api/journal/records/{record_id}", tags=["journal"])
+async def get_journal_record(record_id: str) -> dict:
+    try:
+        return journal.get(record_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="Journal record not found") from error
+
+
+@app.post("/api/journal/records/{record_id}/revisions", tags=["journal"])
+async def append_journal_revision(record_id: str, payload: JournalRevisionInput) -> dict:
+    try:
+        return journal.append_revision(record_id, payload)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="Journal record not found") from error
+
+
+@app.delete("/api/journal/records/{record_id}", tags=["journal"])
+async def recycle_journal_record(record_id: str) -> dict[str, bool]:
+    try:
+        journal.recycle(record_id)
+        return {"recycled": True}
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="Journal record not found") from error
+
+
+@app.post("/api/journal/records/{record_id}/restore", tags=["journal"])
+async def restore_journal_record(record_id: str) -> dict[str, bool]:
+    try:
+        journal.restore(record_id)
+        return {"restored": True}
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="Journal record not found") from error
+
+
+@app.delete("/api/journal/records/{record_id}/permanent", tags=["journal"])
+async def permanently_delete_journal_record(record_id: str, confirm: bool = False) -> dict[str, bool]:
+    if not confirm:
+        raise HTTPException(status_code=409, detail="Permanent deletion requires confirm=true")
+    try:
+        journal.permanently_delete(record_id)
+        return {"deleted": True}
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="Journal record not found") from error
+
+
+@app.post("/api/journal/records/{record_id}/export", tags=["journal"])
+async def export_journal_record(record_id: str) -> dict[str, str]:
+    try:
+        path = journal.export_record(record_id)
+        return {"path": str(path), "record_markdown": str(path / "record.md")}
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="Journal record not found") from error
+
+
+@app.post("/api/journal/export-project", tags=["journal"])
+async def export_journal_project() -> dict[str, str]:
+    return {"path": str(journal.export_project())}
+
+
+@app.post("/api/journal/import-project", tags=["journal"])
+async def import_journal_project(payload: ImportProjectInput) -> dict[str, int]:
+    try:
+        return journal.import_project(Path(payload.path).expanduser().resolve())
+    except (OSError, ValueError, zipfile.BadZipFile, KeyError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@app.get("/api/journal/artifact", tags=["journal"])
+async def journal_artifact(path: str) -> FileResponse:
+    target = (settings.data_dir / path).resolve()
+    if settings.data_dir.resolve() not in target.parents or not target.is_file():
+        raise HTTPException(status_code=404, detail="Artifact not found")
+    return FileResponse(target)

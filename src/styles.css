@@ -1491,6 +1491,68 @@ button {
   color: #a2a9b4;
 }
 
+.record-title-input,
+.record-structure-grid input,
+.record-structure-grid select {
+  width: calc(100% - 20px);
+  height: 30px;
+  margin: 0 10px 5px;
+  padding: 0 8px;
+  border: 1px solid #e3e7ed;
+  border-radius: 5px;
+  outline: 0;
+  background: #f9fafb;
+  color: #343a46;
+  font-size: 11px;
+}
+
+.record-title-input:focus,
+.record-structure-grid input:focus {
+  border-color: #aebee9;
+  background: #fff;
+}
+
+.record-structure-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  padding: 0 10px 8px;
+}
+
+.record-structure-grid input,
+.record-structure-grid select {
+  width: 100%;
+  margin: 0;
+}
+
+.confidence-control {
+  display: flex;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.confidence-control input {
+  width: auto;
+  height: auto;
+  flex: 1;
+  margin: 0;
+  accent-color: var(--blue);
+}
+
+.cancel-revision {
+  width: 100%;
+  padding: 5px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: #fff8f8;
+  color: #bc4958;
+  cursor: pointer;
+  font-size: 10px;
+}
+
 .composer-footer {
   padding: 7px 8px 7px 10px;
   border-top: 1px solid #edf0f4;
@@ -1544,6 +1606,11 @@ button {
   font-size: 11px;
 }
 
+.record-list-heading button.is-active {
+  color: #c94659;
+  font-weight: 700;
+}
+
 .record-list {
   min-height: 0;
   flex: 1;
@@ -1584,6 +1651,213 @@ button {
   grid-template-columns: 13px minmax(0, 1fr);
   padding: 9px 4px 10px;
   border-bottom: 1px solid #e9ecf1;
+}
+
+.record-markdown {
+  color: #68717e;
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+.record-markdown p,
+.record-markdown ul,
+.record-markdown ol {
+  margin: 4px 0;
+}
+
+.danger-link {
+  color: #c94659 !important;
+}
+
+.journal-import-row {
+  display: flex;
+  gap: 5px;
+  padding: 0 12px 6px;
+}
+
+.journal-import-row input {
+  min-width: 0;
+  height: 28px;
+  flex: 1;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  outline: 0;
+  font-size: 10px;
+}
+
+.journal-import-row button {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 10px;
+}
+
+.journal-storage-state {
+  padding: 0 14px 7px;
+  color: var(--muted-2);
+  font-size: 9px;
+}
+
+.journal-storage-state.is-ready {
+  color: var(--green);
+}
+
+.historical-badge {
+  height: 24px;
+  margin-left: 4px;
+  padding: 0 7px;
+  border: 1px solid #d6b565;
+  border-radius: 4px;
+  background: #fff8de;
+  color: #7d6427;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.snapshot-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 30px;
+  background: rgba(24, 28, 37, 0.5);
+  backdrop-filter: blur(3px);
+}
+
+.snapshot-dialog {
+  display: grid;
+  width: min(1180px, 94vw);
+  max-height: 90vh;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 30px 90px rgba(15, 19, 28, 0.3);
+}
+
+.snapshot-dialog > header,
+.snapshot-dialog > footer,
+.snapshot-version-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.snapshot-dialog > header {
+  justify-content: space-between;
+}
+
+.snapshot-dialog > header span,
+.snapshot-dialog > header small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.snapshot-dialog h2 {
+  margin: 3px 0;
+  font-size: 20px;
+}
+
+.snapshot-dialog > header > button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: #f1f3f6;
+  cursor: pointer;
+  font-size: 22px;
+}
+
+.snapshot-version-bar label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.snapshot-version-bar select {
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.snapshot-version-bar span {
+  flex: 1;
+  color: var(--green);
+  font-size: 11px;
+}
+
+.snapshot-version-bar button,
+.snapshot-dialog > footer button {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.snapshot-version-bar button.is-active,
+.snapshot-dialog > footer button.primary {
+  border-color: var(--blue);
+  background: var(--blue);
+  color: #fff;
+}
+
+.snapshot-content {
+  min-height: 0;
+  overflow: auto;
+  padding: 16px;
+  background: #f5f7fa;
+}
+
+.snapshot-content.is-comparing {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.snapshot-content section {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.snapshot-content img {
+  display: block;
+  width: 100%;
+  max-height: 56vh;
+  object-fit: contain;
+  border: 1px solid var(--border);
+}
+
+.snapshot-markdown {
+  padding: 10px 4px 0;
+  color: #3e4551;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.snapshot-missing {
+  display: grid;
+  min-height: 180px;
+  place-items: center;
+  color: var(--muted-2);
+  background: #f6f7f9;
+}
+
+.snapshot-dialog > footer {
+  justify-content: flex-end;
+  border-top: 1px solid var(--border);
+  border-bottom: 0;
 }
 
 .record-dot {

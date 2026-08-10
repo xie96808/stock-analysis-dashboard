@@ -1,15 +1,29 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
+  appendJournalRevision,
+  createJournalRecord,
+  exportJournalProject,
+  exportJournalRecord,
   getApiHealth,
+  getJournalRecord,
   getMarketBars,
   getMarketQuote,
+  importJournalProject,
+  listJournalRecords,
+  permanentlyDeleteJournalRecord,
+  recycleJournalRecord,
+  restoreJournalRecord,
   type ApiHealth,
+  type JournalRecordDetail,
+  type JournalRecordSummary,
   type MarketAdjustment,
   type MarketBarsResponse,
   type MarketInstrument,
   type MarketQuoteResponse,
   type MarketTimeframe,
 } from './api/client'
+import { toPng } from 'html-to-image'
+import ReactMarkdown from 'react-markdown'
 import { ChartWorkbench, type IndicatorConfig } from './components/ChartWorkbench'
 import { Icon } from './components/Icon'
 import { IntradayView } from './components/IntradayView'
@@ -55,46 +69,58 @@ const tools = [
 ] as const
 
 type RecordItem = {
-  id: number
+  id: string
   date: string
   time: string
   title: string
   body: string
   color: 'blue' | 'amber' | 'slate'
+  version: number
+  status: 'pending' | 'partial' | 'hit' | 'invalidated'
+  deletedAt?: string | null
+  screenshotPath?: string | null
 }
 
 const initialRecords: RecordItem[] = [
   {
-    id: 1,
+    id: 'fixture-1',
     date: '2026-08-09',
     time: '18:42',
     title: '日线 · 量价等待确认',
     body: '收盘量能温和回升，等待下一交易日确认关键区间的承接。',
     color: 'blue',
+    version: 1,
+    status: 'pending',
   },
   {
-    id: 2,
+    id: 'fixture-2',
     date: '2026-08-09',
     time: '18:17',
     title: '结构观察',
     body: '价格回到前期成交密集区，观察后续突破是否有效。',
     color: 'amber',
+    version: 1,
+    status: 'pending',
   },
   {
-    id: 3,
+    id: 'fixture-3',
     date: '2026-08-03',
     time: '19:06',
     title: '日线 · 右侧确认前的预案',
     body: '反弹进入前期成交区，暂不追价，等待收盘确认。',
     color: 'slate',
+    version: 1,
+    status: 'pending',
   },
   {
-    id: 4,
+    id: 'fixture-4',
     date: '2026-07-28',
     time: '18:31',
     title: '低位结构观察',
     body: '低点附近出现缩量整理，先记录，不提前定义反转。',
     color: 'slate',
+    version: 1,
+    status: 'pending',
   },
 ]
 
@@ -153,6 +179,23 @@ const defaultIndicators: IndicatorConfig = {
   macdSignal: 9,
 }
 
+function recordFromSummary(record: JournalRecordSummary): RecordItem {
+  return {
+    id: record.id,
+    date: record.date_key,
+    time: new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', hour12: false,
+    }).format(new Date(record.updated_at)),
+    title: record.title,
+    body: record.thesis_markdown,
+    color: record.result_status === 'hit' ? 'blue' : record.result_status === 'invalidated' ? 'amber' : 'slate',
+    version: record.version,
+    status: record.result_status,
+    deletedAt: record.deleted_at,
+    screenshotPath: record.screenshot_path,
+  }
+}
+
 export default function App() {
   const [bars, setBars] = useState<StockBar[]>(fixtureBars)
   const [instrument, setInstrument] = useState<MarketInstrument>(fallbackInstrument)
@@ -162,7 +205,6 @@ export default function App() {
   const [adjustment, setAdjustment] = useState<MarketAdjustment>('qfq')
   const [marketState, setMarketState] = useState<'loading' | 'ready' | 'fallback' | 'error'>('loading')
   const [marketMeta, setMarketMeta] = useState({ source: 'deterministic-fixture', cached: false, delayed: true })
-  const lastBar = bars.at(-1) ?? fixtureBars.at(-1)!
   const [hoverBar, setHoverBar] = useState<StockBar | null>(null)
   const [logPrice, setLogPrice] = useState(true)
   const [profileMode, setProfileMode] = useState<'overlay' | 'dock' | 'hidden'>('overlay')
@@ -197,19 +239,40 @@ export default function App() {
   })
   const [drawingHistory, setDrawingHistory] = useState<{ past: Drawing[][]; future: Drawing[][] }>({ past: [], future: [] })
   const [note, setNote] = useState('')
+  const [recordTitle, setRecordTitle] = useState('')
+  const [recordTags, setRecordTags] = useState('')
+  const [recordInvalidation, setRecordInvalidation] = useState('')
+  const [recordConfidence, setRecordConfidence] = useState(60)
+  const [recordStatus, setRecordStatus] = useState<'pending' | 'partial' | 'hit' | 'invalidated'>('pending')
+  const [recordScenarios, setRecordScenarios] = useState({ bull: '', base: '', bear: '' })
   const [records, setRecords] = useState(initialRecords)
+  const [deletedRecords, setDeletedRecords] = useState<RecordItem[]>([])
+  const [journalState, setJournalState] = useState<'loading' | 'ready' | 'offline'>('loading')
+  const [previewRecord, setPreviewRecord] = useState<JournalRecordDetail | null>(null)
+  const [previewRevisionId, setPreviewRevisionId] = useState<string | null>(null)
+  const [compareRevisions, setCompareRevisions] = useState(false)
+  const [editingRecordId, setEditingRecordId] = useState<string | null>(null)
+  const [trashOpen, setTrashOpen] = useState(false)
+  const [pendingPermanentId, setPendingPermanentId] = useState<string | null>(null)
+  const [historicalCutoff, setHistoricalCutoff] = useState<string | null>(null)
+  const [importPath, setImportPath] = useState('')
   const [fontScale, setFontScale] = useState<FontScale>(() => {
     const saved = window.localStorage.getItem('dashboard-font-scale')
     return saved === 'standard' || saved === 'xlarge' ? saved : 'large'
   })
   const [apiHealth, setApiHealth] = useState<ApiHealth | null>(null)
   const [apiState, setApiState] = useState<'connecting' | 'ready' | 'offline'>('connecting')
-  const [toast, setToast] = useState('P2 行情接入 · 正在读取真实收盘数据')
+  const [toast, setToast] = useState('P6 预测日志 · 正在连接本地历史库')
 
+  const chartBars = useMemo(
+    () => historicalCutoff ? bars.filter((bar) => bar.date.slice(0, 10) <= historicalCutoff) : bars,
+    [bars, historicalCutoff],
+  )
+  const lastBar = chartBars.at(-1) ?? bars.at(-1) ?? fixtureBars.at(-1)!
   const displayBar = hoverBar ?? lastBar
-  const previousBar = bars.length > 1 ? bars[bars.length - 2] : null
-  const referenceClose = quote?.previous_close ?? previousBar?.close ?? lastBar.close
-  const latestPrice = quote?.last ?? lastBar.close
+  const previousBar = chartBars.length > 1 ? chartBars[chartBars.length - 2] : null
+  const referenceClose = historicalCutoff ? previousBar?.close ?? lastBar.close : quote?.previous_close ?? previousBar?.close ?? lastBar.close
+  const latestPrice = historicalCutoff ? lastBar.close : quote?.last ?? lastBar.close
   const priceChange = latestPrice - referenceClose
   const priceChangePercent = referenceClose ? priceChange / referenceClose * 100 : 0
   const displayName = instrument.name || instrument.symbol
@@ -217,6 +280,12 @@ export default function App() {
   const workspaceKey = `${instrument.key}::${workspace}`
   const drawings = drawingStore.workspaces[workspaceKey] ?? []
   const handleHoverBar = useCallback((bar: StockBar | null) => setHoverBar(bar), [])
+  const refreshJournal = useCallback(async (signal?: AbortSignal) => {
+    const result = await listJournalRecords({ includeDeleted: true }, signal)
+    setRecords(result.filter((record) => !record.deleted_at).map(recordFromSummary))
+    setDeletedRecords(result.filter((record) => Boolean(record.deleted_at)).map(recordFromSummary))
+    setJournalState('ready')
+  }, [])
 
   const displayDate = useMemo(() => {
     const source = displayBar.date.split('-')
@@ -262,6 +331,15 @@ export default function App() {
       })
     return () => controller.abort()
   }, [])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    refreshJournal(controller.signal).catch((error: unknown) => {
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      setJournalState('offline')
+    })
+    return () => controller.abort()
+  }, [refreshJournal])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -382,26 +460,104 @@ export default function App() {
     })
   }
 
-  const addRecord = () => {
+  const addRecord = async () => {
     const body = note.trim()
     if (!body) {
       notify('请先写下本次判断')
       return
     }
 
-    setRecords((current) => [
-      {
-        id: Date.now(),
-        date: selectedJournalDate,
-        time: new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date()),
-        title: `${timeframe} · 手动记录`,
-        body,
-        color: 'blue',
-      },
-      ...current,
-    ])
-    setNote('')
-    notify('已保存本次 Markdown 记录与图表快照占位')
+    try {
+      notify('正在冻结文字、画线、指标与高清图表快照…')
+      const chartNode = document.querySelector<HTMLElement>('.chart-region')
+      const screenshot = chartNode ? await toPng(chartNode, {
+        pixelRatio: 2,
+        backgroundColor: '#ffffff',
+        cacheBust: true,
+        filter: (node) => !(node instanceof HTMLElement && node.classList.contains('drawing-inspector')),
+      }) : undefined
+      const revisionPayload = {
+        title: recordTitle.trim() || `${timeframe} · ${body.split('\n')[0].replace(/^#+\s*/, '').slice(0, 42)}`,
+        thesis_markdown: body,
+        market_data_as_of: lastBar.date,
+        chart_state: {
+          timeframe, adjustment, logPrice, profileMode, profileWidth, cleanMode, workspace,
+          historicalCutoff, visibleBars: chartBars.length,
+        },
+        drawings: drawings as unknown as Array<Record<string, unknown>>,
+        indicators: indicators as unknown as Record<string, unknown>,
+        screenshot_data_url: screenshot,
+        tags: recordTags.split(/[,，\s]+/).map((value) => value.trim()).filter(Boolean),
+        scenarios: Object.entries(recordScenarios).filter(([, value]) => value.trim()).map(([kind, description]) => ({ kind, description })),
+        invalidation: recordInvalidation.trim() || undefined,
+        confidence: recordConfidence,
+        result_status: recordStatus,
+      }
+      if (editingRecordId) {
+        await appendJournalRevision(editingRecordId, revisionPayload)
+      } else {
+        await createJournalRecord({
+          ...revisionPayload,
+          date_key: selectedJournalDate,
+          symbol: instrument.key,
+          name: displayName,
+          market: instrument.market,
+          timeframe,
+        })
+      }
+      await refreshJournal()
+      setNote('')
+      setRecordTitle('')
+      setRecordTags('')
+      setRecordInvalidation('')
+      setEditingRecordId(null)
+      notify(editingRecordId ? '新revision已追加，旧版本保持不变' : '研究记录、画线与图表快照已冻结保存')
+    } catch (error) {
+      notify(error instanceof Error ? `记录保存失败：${error.message}` : '记录保存失败')
+    }
+  }
+
+  const openRecord = async (recordId: string) => {
+    if (recordId.startsWith('fixture-')) {
+      notify('本地API连接后可创建正式快照记录')
+      return
+    }
+    try {
+      const detail = await getJournalRecord(recordId)
+      setPreviewRecord(detail)
+      setPreviewRevisionId(detail.current_revision.id)
+      setCompareRevisions(false)
+    } catch (error) {
+      notify(error instanceof Error ? error.message : '记录读取失败')
+    }
+  }
+
+  const loadRevision = (mode: 'replace' | 'copy' | 'historical') => {
+    if (!previewRecord) return
+    const revision = previewRecord.revisions.find((item) => item.id === previewRevisionId) ?? previewRecord.current_revision
+    const snapshotDrawings = revision.drawings as unknown as Drawing[]
+    if (mode === 'copy') {
+      replaceWorkspaceDrawings([...drawings, ...snapshotDrawings.map((drawing, index) => ({ ...drawing, id: `${drawing.id}-copy-${Date.now()}-${index}` }))])
+    } else {
+      replaceWorkspaceDrawings(snapshotDrawings)
+    }
+    const state = revision.chart_state
+    if (typeof state.logPrice === 'boolean') setLogPrice(state.logPrice)
+    if (typeof state.timeframe === 'string' && timeframes.includes(state.timeframe)) setTimeframe(state.timeframe)
+    if (state.adjustment === 'qfq' || state.adjustment === 'none' || state.adjustment === 'hfq') setAdjustment(state.adjustment)
+    if (mode === 'historical') setHistoricalCutoff(revision.market_data_as_of.slice(0, 10))
+    setPreviewRecord(null)
+    notify(mode === 'copy' ? '历史画线已复制到当前工作区' : mode === 'historical' ? '已进入当日视角，行情截止到记录时点' : '当前工作区已替换为历史快照')
+  }
+
+  const recycleRecord = async (recordId: string) => {
+    if (recordId.startsWith('fixture-')) {
+      setRecords((current) => current.filter((item) => item.id !== recordId))
+      return
+    }
+    await recycleJournalRecord(recordId)
+    await refreshJournal()
+    notify('记录已移入回收站，可恢复')
   }
 
   return (
@@ -410,7 +566,7 @@ export default function App() {
         <div className="brand" aria-label="研判看板">
           <span className="brand-mark">研</span>
           <span className="brand-name">研判</span>
-          <span className="brand-phase">P5</span>
+          <span className="brand-phase">P6</span>
         </div>
 
         <form className="symbol-search" onSubmit={submitSymbol}>
@@ -428,7 +584,7 @@ export default function App() {
 
         <nav className="header-nav" aria-label="工作区导航">
           <button className="nav-item is-active">图表</button>
-          <button className="nav-item" onClick={() => notify('复盘工作流将在 P6 接入')}>复盘</button>
+          <button className="nav-item" onClick={() => { setJournalOpen(true); notify('研究日志已打开，可按日期查看预测与revision') }}>复盘</button>
           <button className="nav-item" onClick={() => notify(`${displayName} · ${marketMeta.source}${marketMeta.cached ? ' · 缓存命中' : ''}`)}>数据</button>
         </nav>
 
@@ -635,6 +791,7 @@ export default function App() {
               <strong>{displayName} · {selectedDay ? `${selectedDay.date.slice(0, 10)} 分时` : timeframe}</strong>
               {!selectedDay && <span>{adjustmentLabel}</span>}
               {!selectedDay && <span className={logPrice ? 'log-badge is-log' : 'log-badge'}>{logPrice ? 'LOG' : '线性'}</span>}
+              {historicalCutoff && <button className="historical-badge" onClick={() => setHistoricalCutoff(null)}>当日视角 · 截止{historicalCutoff} ×</button>}
               {selectedDay && <span className="intraday-source">{intradayLoading ? '正在加载5分钟行情' : intradayPoints.length ? '真实5分钟行情' : '本地拟合预览'}</span>}
             </div>
             <div className="chart-context-actions">
@@ -648,7 +805,7 @@ export default function App() {
             <IntradayView bar={selectedDay} points={intradayPoints} fontScale={fontScale} />
           ) : (
             <ChartWorkbench
-              bars={bars}
+              bars={chartBars}
               instrumentLabel={displayName}
               symbol={instrument.key}
               market={instrument.market}
@@ -699,62 +856,128 @@ export default function App() {
 
             <div className="note-composer">
               <div className="composer-title">
-                <strong>记录本次判断</strong>
-                <span>Markdown</span>
+                <strong>{editingRecordId ? '追加历史版本' : '记录本次判断'}</strong>
+                <span>{editingRecordId ? 'append-only revision' : 'Markdown'}</span>
               </div>
+              <input className="record-title-input" value={recordTitle} onChange={(event) => setRecordTitle(event.target.value)} placeholder="标题（留空则自动生成）" />
               <textarea
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
                 placeholder="例如：记录本次判断、关键条件、观察区间与判断失效条件……"
               />
-              <div className="composer-footer">
-                <span>自动附带画线与截图</span>
-                <button onClick={addRecord}><Icon name="save" />保存记录</button>
+              <div className="record-structure-grid">
+                <input aria-label="记录标签" value={recordTags} onChange={(event) => setRecordTags(event.target.value)} placeholder="标签：趋势, 等待确认" />
+                <input aria-label="失效条件" value={recordInvalidation} onChange={(event) => setRecordInvalidation(event.target.value)} placeholder="判断失效条件" />
+                <input aria-label="看多情景" value={recordScenarios.bull} onChange={(event) => setRecordScenarios((current) => ({ ...current, bull: event.target.value }))} placeholder="看多情景" />
+                <input aria-label="基准情景" value={recordScenarios.base} onChange={(event) => setRecordScenarios((current) => ({ ...current, base: event.target.value }))} placeholder="基准情景" />
+                <input aria-label="看空情景" value={recordScenarios.bear} onChange={(event) => setRecordScenarios((current) => ({ ...current, bear: event.target.value }))} placeholder="看空情景" />
+                <select aria-label="验证状态" value={recordStatus} onChange={(event) => setRecordStatus(event.target.value as typeof recordStatus)}>
+                  <option value="pending">待验证</option><option value="partial">部分符合</option><option value="hit">命中</option><option value="invalidated">失效</option>
+                </select>
+                <label className="confidence-control">置信度 {recordConfidence}%<input aria-label="主观置信度" type="range" min="0" max="100" value={recordConfidence} onChange={(event) => setRecordConfidence(Number(event.target.value))} /></label>
               </div>
+              <div className="composer-footer">
+                <span>冻结Markdown、画线、指标、坐标与2×截图</span>
+                <button onClick={addRecord}><Icon name="save" />{editingRecordId ? '保存新版本' : '保存记录'}</button>
+              </div>
+              {editingRecordId && <button className="cancel-revision" onClick={() => setEditingRecordId(null)}>取消追加版本</button>}
             </div>
 
             <div className="record-list-heading">
               <strong>当日时间线</strong>
-              <button onClick={() => notify('历史版本筛选将在 P6 接入')}>全部版本</button>
+              <button className={trashOpen ? 'is-active' : ''} onClick={() => setTrashOpen((value) => !value)}>{trashOpen ? '返回时间线' : `回收站 ${deletedRecords.length}`}</button>
             </div>
 
             <div className="record-list">
-              {filteredRecords.map((record) => (
+              {(trashOpen ? deletedRecords : filteredRecords).map((record) => (
                 <article className="record-item" key={record.id}>
                   <div className={`record-dot ${record.color}`} />
                   <div className="record-copy">
-                    <div className="record-meta"><time>{record.time}</time><span>{displayName}</span><span>v1</span></div>
+                    <div className="record-meta"><time>{record.time}</time><span>{displayName}</span><span>v{record.version}</span><span>{record.status}</span></div>
                     <h3>{record.title}</h3>
-                    <p>{record.body}</p>
+                    <div className="record-markdown"><ReactMarkdown>{record.body}</ReactMarkdown></div>
                     <div className="record-actions">
-                      <button onClick={() => notify('历史快照只读预览将在 P6 接入')}>查看快照</button>
-                      <button onClick={() => notify('从历史记录加载工作区将在 P6 接入')}>加载</button>
-                      <button
-                        onClick={() => {
-                          setRecords((current) => current.filter((item) => item.id !== record.id))
-                          notify('本次会话已删除；持久化回收站将在 P6 接入')
-                        }}
-                      >删除</button>
+                      {!trashOpen && <>
+                        <button onClick={() => openRecord(record.id)}>查看快照</button>
+                        <button onClick={async () => {
+                          if (record.id.startsWith('fixture-')) return notify('正式记录可追加不可覆盖的版本')
+                          const detail = await getJournalRecord(record.id)
+                          setEditingRecordId(record.id); setNote(detail.current_revision.thesis_markdown); setRecordTitle(detail.current_revision.title)
+                          notify(`正在基于v${detail.current_revision.version}追加新版本`)
+                        }}>追加版本</button>
+                        <button onClick={() => openRecord(record.id)}>加载</button>
+                        <button onClick={() => recycleRecord(record.id)}>删除</button>
+                      </>}
+                      {trashOpen && <>
+                        <button onClick={async () => { await restoreJournalRecord(record.id); await refreshJournal(); notify('记录已恢复') }}>恢复</button>
+                        <button className="danger-link" onClick={async () => {
+                          if (pendingPermanentId !== record.id) { setPendingPermanentId(record.id); return }
+                          await permanentlyDeleteJournalRecord(record.id); setPendingPermanentId(null); await refreshJournal(); notify('记录及全部revision已永久删除')
+                        }}>{pendingPermanentId === record.id ? '再次点击永久删除' : '永久删除'}</button>
+                      </>}
                     </div>
                   </div>
                 </article>
               ))}
-              {filteredRecords.length === 0 && (
+              {(trashOpen ? deletedRecords.length : filteredRecords.length) === 0 && (
                 <div className="record-empty">
                   <Icon name="calendar" />
-                  <strong>这一天还没有记录</strong>
-                  <span>可以在上方写下第一条 Markdown 笔记</span>
+                  <strong>{trashOpen ? '回收站为空' : '这一天还没有记录'}</strong>
+                  <span>{trashOpen ? '移入回收站的记录可在此恢复' : '可以在上方写下第一条 Markdown 笔记'}</span>
                 </div>
               )}
             </div>
 
-            <button className="journal-footer-button" onClick={() => notify('完整历史记录将在 P6 接入')}>
-              查看全部历史记录
+            <button className="journal-footer-button" onClick={async () => { const result = await exportJournalProject(); notify(`完整项目已导出：${result.path}`) }}>
+              导出全部历史与校验清单
               <Icon name="chevron" />
             </button>
+            <div className="journal-import-row">
+              <input value={importPath} onChange={(event) => setImportPath(event.target.value)} placeholder="粘贴项目ZIP本地路径" />
+              <button onClick={async () => { const result = await importJournalProject(importPath); await refreshJournal(); notify(`已恢复${result.records}条记录/${result.revisions}个版本`) }}>恢复</button>
+            </div>
+            <span className={`journal-storage-state is-${journalState}`}>{journalState === 'ready' ? 'SQLite事实库 · 每日备份30份' : journalState === 'loading' ? '正在读取SQLite' : 'API离线 · 当前展示本地样例'}</span>
           </aside>
         )}
       </main>
+
+      {previewRecord && (() => {
+        const revision = previewRecord.revisions.find((item) => item.id === previewRevisionId) ?? previewRecord.current_revision
+        const previous = previewRecord.revisions.find((item) => item.version === revision.version - 1)
+        return (
+          <div className="snapshot-modal" role="dialog" aria-modal="true" aria-label="历史记录快照">
+            <div className="snapshot-dialog">
+              <header>
+                <div><span>只读历史快照</span><h2>{revision.title}</h2><small>{previewRecord.date_key} · {previewRecord.symbol} · 数据截止 {revision.market_data_as_of}</small></div>
+                <button aria-label="关闭快照" onClick={() => setPreviewRecord(null)}>×</button>
+              </header>
+              <div className="snapshot-version-bar">
+                <label>版本<select aria-label="历史版本" value={revision.id} onChange={(event) => setPreviewRevisionId(event.target.value)}>{previewRecord.revisions.map((item) => <option key={item.id} value={item.id}>v{item.version} · {new Date(item.created_at).toLocaleString('zh-CN')}</option>)}</select></label>
+                <span>旧版本永久保留</span>
+                <button className={compareRevisions ? 'is-active' : ''} disabled={!previous} onClick={() => setCompareRevisions((value) => !value)}>与v{revision.version - 1}对比</button>
+              </div>
+              <div className={`snapshot-content${compareRevisions && previous ? ' is-comparing' : ''}`}>
+                <section>
+                  {revision.screenshot_path ? <img src={`/api/journal/artifact?path=${encodeURIComponent(revision.screenshot_path)}`} alt={`v${revision.version}图表快照`} /> : <div className="snapshot-missing">该版本没有PNG快照</div>}
+                  <div className="snapshot-markdown"><ReactMarkdown>{revision.thesis_markdown}</ReactMarkdown></div>
+                </section>
+                {compareRevisions && previous && <section>
+                  <h3>v{previous.version} · {previous.title}</h3>
+                  {previous.screenshot_path ? <img src={`/api/journal/artifact?path=${encodeURIComponent(previous.screenshot_path)}`} alt={`v${previous.version}图表快照`} /> : <div className="snapshot-missing">该版本没有PNG快照</div>}
+                  <div className="snapshot-markdown"><ReactMarkdown>{previous.thesis_markdown}</ReactMarkdown></div>
+                </section>}
+              </div>
+              <footer>
+                <button onClick={() => loadRevision('historical')}>以当日视角查看</button>
+                <button onClick={() => loadRevision('copy')}>复制画线到当前工作区</button>
+                <button onClick={() => loadRevision('replace')}>用快照替换工作区</button>
+                <button onClick={async () => { const result = await exportJournalRecord(previewRecord.id); notify(`单条Markdown已导出：${result.record_markdown}`) }}>导出Markdown/PNG/JSON</button>
+                <button className="primary" onClick={() => { setEditingRecordId(previewRecord.id); setNote(revision.thesis_markdown); setRecordTitle(revision.title); setPreviewRecord(null) }}>基于此版本追加修订</button>
+              </footer>
+            </div>
+          </div>
+        )
+      })()}
 
       <footer className="status-bar">
         <span>工具：{activeTool}</span>

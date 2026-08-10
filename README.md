@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- 阶段：P5 成交量分布已完成，正在推进P6预测日志与历史追溯。
+- 阶段：P6 预测日志与历史追溯已完成，正在推进P7质量与第一版打包。
 - 运行形式：本机 Web 应用，桌面浏览器优先，平板横屏为第二优先级。
 - 设计基准：用户提供的 TradingView 截图与同花顺对比截图。
 - 核心需求：横轴按真实日期自由缩放和延伸；纵轴支持普通价格与 Log 价格切换。
@@ -29,6 +29,8 @@
 - [P4 用户验收单](./docs/P4_ACCEPTANCE_CHECKLIST.md)
 - [P5 验收报告](./docs/P5_REPORT.md)
 - [P5 用户验收单](./docs/P5_ACCEPTANCE_CHECKLIST.md)
+- [P6 验收报告](./docs/P6_REPORT.md)
+- [P6 用户验收单](./docs/P6_ACCEPTANCE_CHECKLIST.md)
 
 ## 本地运行
 
