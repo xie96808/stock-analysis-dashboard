@@ -5,6 +5,9 @@ export type StockBar = {
   low: number
   close: number
   volume: number
+  amount?: number | null
+  /** Decimal fraction: 0.023 means a 2.3% turnover rate. */
+  turnoverRate?: number | null
 }
 
 export type MacdPoint = {
@@ -105,6 +108,8 @@ export function createFixtureBars() {
       low: Number(low.toFixed(2)),
       close: Number(close.toFixed(2)),
       volume,
+      amount: close * volume,
+      turnoverRate: Math.min(volume / 420_000_000, 1),
     }
   })
 
@@ -116,6 +121,8 @@ export function createFixtureBars() {
       low: 63.42,
       close: 64.77,
       volume: 7_960_000,
+      amount: 64.77 * 7_960_000,
+      turnoverRate: 7_960_000 / 420_000_000,
     }
     bars[bars.length - 1] = {
       date: '2026-08-07',
@@ -124,6 +131,8 @@ export function createFixtureBars() {
       low: 64.66,
       close: 65.38,
       volume: 9_080_000,
+      amount: 65.38 * 9_080_000,
+      turnoverRate: 9_080_000 / 420_000_000,
     }
   }
 

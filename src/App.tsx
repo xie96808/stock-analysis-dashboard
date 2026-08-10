@@ -23,12 +23,18 @@ import {
   type MarketTimeframe,
 } from './api/client'
 import { toBlob, toPng } from 'html-to-image'
-import { ChartWorkbench, type IndicatorConfig } from './components/ChartWorkbench'
+import {
+  ChartWorkbench,
+  type DistributionMode,
+  type IndicatorConfig,
+  type ProfileLayout,
+} from './components/ChartWorkbench'
 import { Icon } from './components/Icon'
 import { IntradayView } from './components/IntradayView'
 import { JournalCalendar } from './components/JournalCalendar'
 import { fixtureBars, type IntradayPoint, type StockBar } from './data/fixture'
 import { emptyDrawingStore, type Drawing, type DrawingStore } from './drawings/model'
+import { resolveChipAsOfDate } from './distributions/model'
 import './styles.css'
 
 const LazyMarkdown = lazy(() => import('react-markdown'))
@@ -57,6 +63,45 @@ const adjustmentLabels: Record<MarketAdjustment, string> = {
 }
 
 type FontScale = 'standard' | 'large' | 'xlarge'
+type VisibleDistributionMode = Exclude<DistributionMode, 'hidden'>
+
+function savedDistributionMode(): DistributionMode {
+  try {
+    const saved = window.localStorage.getItem('dashboard-distribution-v2')
+    const mode = saved ? (JSON.parse(saved) as { mode?: unknown }).mode : null
+    return mode === 'chips' || mode === 'hidden' ? mode : 'volume'
+  } catch {
+    return 'volume'
+  }
+}
+
+function savedProfileLayout(): ProfileLayout {
+  try {
+    const saved = window.localStorage.getItem('dashboard-distribution-v2')
+    return saved && (JSON.parse(saved) as { layout?: unknown }).layout === 'dock' ? 'dock' : 'overlay'
+  } catch {
+    return 'overlay'
+  }
+}
+
+function savedLastDistributionMode(): VisibleDistributionMode {
+  try {
+    const saved = window.localStorage.getItem('dashboard-distribution-v2')
+    return saved && (JSON.parse(saved) as { lastMode?: unknown }).lastMode === 'chips' ? 'chips' : 'volume'
+  } catch {
+    return 'volume'
+  }
+}
+
+function savedProfileWidth() {
+  try {
+    const saved = window.localStorage.getItem('dashboard-distribution-v2')
+    const width = saved ? Number((JSON.parse(saved) as { width?: unknown }).width) : 31
+    return Number.isFinite(width) ? Math.min(42, Math.max(18, width)) : 31
+  } catch {
+    return 31
+  }
+}
 
 const tools = [
   ['cursor', '选择'],
@@ -143,6 +188,8 @@ function toStockBars(response: MarketBarsResponse): StockBar[] {
     low: bar.low,
     close: bar.close,
     volume: bar.volume,
+    amount: bar.amount,
+    turnoverRate: bar.turnover_rate,
   }))
 }
 
@@ -203,6 +250,7 @@ function recordFromSummary(record: JournalRecordSummary): RecordItem {
 
 export default function App() {
   const [bars, setBars] = useState<StockBar[]>(fixtureBars)
+  const [chipBars, setChipBars] = useState<StockBar[]>(fixtureBars)
   const [instrument, setInstrument] = useState<MarketInstrument>(fallbackInstrument)
   const [quote, setQuote] = useState<MarketQuoteResponse | null>(null)
   const [symbolInput, setSymbolInput] = useState('001280')
@@ -213,9 +261,11 @@ export default function App() {
   const [hoverBar, setHoverBar] = useState<StockBar | null>(null)
   const [logPrice, setLogPrice] = useState(true)
   const [percentPrice, setPercentPrice] = useState(false)
-  const [profileMode, setProfileMode] = useState<'overlay' | 'dock' | 'hidden'>('overlay')
-  const [profileWidth, setProfileWidth] = useState(31)
-  const [chipVisible, setChipVisible] = useState(false)
+  const [distributionMode, setDistributionMode] = useState<DistributionMode>(savedDistributionMode)
+  const [lastDistributionMode, setLastDistributionMode] = useState<VisibleDistributionMode>(savedLastDistributionMode)
+  const [profileLayout, setProfileLayout] = useState<ProfileLayout>(savedProfileLayout)
+  const [profileWidth, setProfileWidth] = useState(savedProfileWidth)
+  const [chipAsOfDate, setChipAsOfDate] = useState<string | null>(null)
   const [cleanMode, setCleanMode] = useState(false)
   const [indicatorOpen, setIndicatorOpen] = useState(false)
   const [indicators, setIndicators] = useState<IndicatorConfig>(() => {
@@ -276,6 +326,11 @@ export default function App() {
     () => historicalCutoff ? bars.filter((bar) => bar.date.slice(0, 10) <= historicalCutoff) : bars,
     [bars, historicalCutoff],
   )
+  const chipLatestDate = chipBars.at(-1)?.date.slice(0, 10) ?? ''
+  const effectiveChipAsOfDate = useMemo(
+    () => resolveChipAsOfDate(chipBars.map((bar) => bar.date), chipAsOfDate, historicalCutoff),
+    [chipAsOfDate, chipBars, historicalCutoff],
+  )
   const lastBar = chartBars.at(-1) ?? bars.at(-1) ?? fixtureBars.at(-1)!
   const displayBar = hoverBar ?? lastBar
   const previousBar = chartBars.length > 1 ? chartBars[chartBars.length - 2] : null
@@ -291,6 +346,14 @@ export default function App() {
   const handleSelectBar = useCallback((bar: StockBar) => {
     if (timeframe === '日K') setSelectedDay(bar)
   }, [timeframe])
+  const handleSelectChipDate = useCallback((bar: StockBar) => {
+    if (timeframe !== '日K' || instrument.market !== 'CN') return
+    const date = bar.date.slice(0, 10)
+    setChipAsOfDate(date)
+    setDistributionMode('chips')
+    setLastDistributionMode('chips')
+    notify(`筹码分布已固定至${date}`)
+  }, [instrument.market, timeframe])
   const closeIntraday = useCallback(() => {
     setSelectedDay(null)
     setIntradayPoints([])
@@ -320,6 +383,28 @@ export default function App() {
   useEffect(() => {
     window.localStorage.setItem('dashboard-font-scale', fontScale)
   }, [fontScale])
+
+  useEffect(() => {
+    window.localStorage.setItem('dashboard-distribution-v2', JSON.stringify({
+      mode: distributionMode,
+      lastMode: lastDistributionMode,
+      layout: profileLayout,
+      width: profileWidth,
+    }))
+  }, [distributionMode, lastDistributionMode, profileLayout, profileWidth])
+
+  useEffect(() => {
+    setChipAsOfDate(null)
+  }, [activeSymbol])
+
+  useEffect(() => {
+    if (instrument.market !== 'HK' || (distributionMode !== 'chips' && lastDistributionMode !== 'chips')) return
+    if (distributionMode === 'chips') {
+      setDistributionMode('volume')
+      notify('港股暂保留成交量分布；筹码分布第一版使用A股换手口径')
+    }
+    setLastDistributionMode('volume')
+  }, [distributionMode, instrument.market, lastDistributionMode])
 
   useEffect(() => {
     window.localStorage.setItem('dashboard-indicators-v1', JSON.stringify(indicators))
@@ -370,18 +455,29 @@ export default function App() {
   useEffect(() => {
     const controller = new AbortController()
     setMarketState('loading')
+    setChipBars([])
     setSelectedDay(null)
     setIntradayPoints([])
     const selectedTimeframe = timeframeValues[timeframe]
+    const primaryBarsRequest = getMarketBars(activeSymbol, {
+      timeframe: selectedTimeframe,
+      adjustment,
+      limit: selectedTimeframe.endsWith('m') ? 640 : 2000,
+    }, controller.signal)
+    const chipAdjustment: MarketAdjustment = selectedTimeframe.endsWith('m') ? 'none' : adjustment
+    const chipBarsRequest = selectedTimeframe === '1d' && chipAdjustment === adjustment
+      ? primaryBarsRequest
+      : getMarketBars(activeSymbol, {
+        timeframe: '1d',
+        adjustment: chipAdjustment,
+        limit: 2000,
+      }, controller.signal)
     Promise.all([
-      getMarketBars(activeSymbol, {
-        timeframe: selectedTimeframe,
-        adjustment,
-        limit: selectedTimeframe.endsWith('m') ? 640 : 2000,
-      }, controller.signal),
+      primaryBarsRequest,
       getMarketQuote(activeSymbol, controller.signal).catch(() => null),
+      chipBarsRequest.catch(() => null),
     ])
-      .then(([response, currentQuote]) => {
+      .then(([response, currentQuote, chipResponse]) => {
         const nextBars = toStockBars(response)
         if (!nextBars.length) throw new Error('行情源未返回K线')
         const savedAdjustment = window.localStorage.getItem(`market-adjustment:${response.instrument.key}`)
@@ -394,6 +490,7 @@ export default function App() {
           return
         }
         setBars(nextBars)
+        setChipBars(chipResponse ? toStockBars(chipResponse) : selectedTimeframe === '1d' ? nextBars : [])
         setInstrument(response.instrument)
         setQuote(currentQuote)
         setMarketMeta({ source: response.source, cached: response.cached, delayed: response.delayed })
@@ -403,6 +500,7 @@ export default function App() {
         if (error instanceof DOMException && error.name === 'AbortError') return
         if (activeSymbol === '001280') {
           setBars(fixtureBars)
+          setChipBars(fixtureBars)
           setInstrument(fallbackInstrument)
           setMarketMeta({ source: 'deterministic-fixture', cached: false, delayed: true })
           setMarketState('fallback')
@@ -516,7 +614,8 @@ export default function App() {
         thesis_markdown: body,
         market_data_as_of: lastBar.date,
         chart_state: {
-          timeframe, adjustment, logPrice, percentPrice, profileMode, profileWidth, cleanMode, workspace,
+          timeframe, adjustment, logPrice, percentPrice, distributionMode, profileLayout, profileWidth,
+          chipAsOfDate: effectiveChipAsOfDate, cleanMode, workspace,
           historicalCutoff, visibleBars: chartBars.length,
         },
         drawings: drawings as unknown as Array<Record<string, unknown>>,
@@ -581,6 +680,19 @@ export default function App() {
     if (typeof state.percentPrice === 'boolean') setPercentPrice(state.percentPrice)
     if (typeof state.timeframe === 'string' && timeframes.includes(state.timeframe)) setTimeframe(state.timeframe)
     if (state.adjustment === 'qfq' || state.adjustment === 'none' || state.adjustment === 'hfq') setAdjustment(state.adjustment)
+    if (state.distributionMode === 'volume' || state.distributionMode === 'chips' || state.distributionMode === 'hidden') {
+      setDistributionMode(state.distributionMode)
+      if (state.distributionMode !== 'hidden') setLastDistributionMode(state.distributionMode)
+    } else if (state.chipVisible === true) {
+      setDistributionMode('chips')
+      setLastDistributionMode('chips')
+    } else if (state.profileMode === 'hidden') {
+      setDistributionMode('hidden')
+    }
+    if (state.profileLayout === 'overlay' || state.profileLayout === 'dock') setProfileLayout(state.profileLayout)
+    else if (state.profileMode === 'overlay' || state.profileMode === 'dock') setProfileLayout(state.profileMode)
+    if (typeof state.profileWidth === 'number') setProfileWidth(Math.min(42, Math.max(18, state.profileWidth)))
+    if (typeof state.chipAsOfDate === 'string') setChipAsOfDate(state.chipAsOfDate.slice(0, 10))
     if (mode === 'historical') setHistoricalCutoff(revision.market_data_as_of.slice(0, 10))
     setPreviewRecord(null)
     notify(mode === 'copy' ? '历史画线已复制到当前工作区' : mode === 'historical' ? '已进入当日视角，行情截止到记录时点' : '当前工作区已替换为历史快照')
@@ -747,24 +859,53 @@ export default function App() {
             <option value="hfq">后复权</option>
           </select>
         </label>
-        <button className={`toolbar-toggle${profileMode !== 'hidden' ? ' is-active' : ''}`} onClick={() => setProfileMode((value) => value === 'hidden' ? 'overlay' : 'hidden')}>
-          成交量分布
-        </button>
-        <label className="inline-select profile-mode-select">
-          <span>分布 · {profileMode === 'overlay' ? '覆盖' : profileMode === 'dock' ? '停靠' : '隐藏'}</span>
-          <select aria-label="成交量分布模式" value={profileMode} onChange={(event) => setProfileMode(event.target.value as 'overlay' | 'dock' | 'hidden')}>
+        <div className="distribution-switch" role="group" aria-label="分布类型">
+          <span>分布</span>
+          <button
+            className={distributionMode === 'volume' ? 'is-active' : ''}
+            type="button"
+            onClick={() => {
+              setDistributionMode('volume')
+              setLastDistributionMode('volume')
+              notify('已切换为可视区成交量分布')
+            }}
+          >成交量</button>
+          <button
+            className={distributionMode === 'chips' ? 'is-active' : ''}
+            type="button"
+            aria-disabled={instrument.market !== 'CN'}
+            title={instrument.market === 'CN' ? '查看截至指定交易日的筹码成本分布' : '筹码分布第一版使用A股换手口径'}
+            onClick={() => {
+              if (instrument.market !== 'CN') return notify('筹码分布第一版仅对A股启用')
+              setDistributionMode('chips')
+              setLastDistributionMode('chips')
+              notify(`筹码分布截至${effectiveChipAsOfDate}`)
+            }}
+          >筹码</button>
+        </div>
+        <button
+          className={`toolbar-toggle distribution-visibility${distributionMode === 'hidden' ? '' : ' is-active'}`}
+          type="button"
+          title={distributionMode === 'hidden' ? '显示分布' : '隐藏分布'}
+          onClick={() => {
+            if (distributionMode === 'hidden') setDistributionMode(lastDistributionMode)
+            else {
+              setLastDistributionMode(distributionMode)
+              setDistributionMode('hidden')
+            }
+          }}
+        >{distributionMode === 'hidden' ? '显示' : '隐藏'}</button>
+        {distributionMode === 'volume' && <label className="inline-select profile-mode-select">
+          <span>{profileLayout === 'overlay' ? '覆盖' : '停靠'}</span>
+          <Icon name="chevron" />
+          <select aria-label="成交量分布布局" value={profileLayout} onChange={(event) => setProfileLayout(event.target.value as ProfileLayout)}>
             <option value="overlay">覆盖</option>
             <option value="dock">停靠</option>
-            <option value="hidden">隐藏</option>
           </select>
-        </label>
-        {profileMode !== 'hidden' && <label className="profile-width-control" title={`分布宽度 ${profileWidth}%`}>
-          <span>宽</span><input aria-label="成交量分布宽度" type="range" min="18" max="42" value={profileWidth} onChange={(event) => setProfileWidth(Number(event.target.value))} />
         </label>}
-        <button className={`toolbar-toggle${chipVisible ? ' is-active' : ''}`} onClick={() => {
-          if (instrument.market !== 'CN') return notify('筹码成本估算第一版仅对A股启用')
-          setChipVisible((value) => !value)
-        }}>筹码估算</button>
+        {distributionMode !== 'hidden' && <label className="profile-width-control" title={`分布宽度 ${profileWidth}%`}>
+          <span>宽</span><input aria-label="分布宽度" type="range" min="18" max="42" value={profileWidth} onChange={(event) => setProfileWidth(Number(event.target.value))} />
+        </label>}
         <button className={`toolbar-toggle${cleanMode ? ' is-active' : ''}`} onClick={() => setCleanMode((value) => !value)}>
           纯净模式
         </button>
@@ -884,10 +1025,12 @@ export default function App() {
               timeframe={timeframe}
               logPrice={logPrice}
               percentPrice={percentPrice}
-              profileVisible={profileMode !== 'hidden' && !cleanMode}
-              profileMode={profileMode}
+              distributionMode={distributionMode}
+              profileLayout={profileLayout}
               profileWidth={profileWidth}
-              chipVisible={chipVisible}
+              chipBars={chipBars}
+              chipAsOfDate={effectiveChipAsOfDate}
+              chipLatestDate={chipLatestDate}
               candleTheme={candleTheme}
               cleanMode={cleanMode}
               indicators={indicators}
@@ -898,6 +1041,11 @@ export default function App() {
               fontScale={fontScale}
               onHoverBar={handleHoverBar}
               onSelectBar={handleSelectBar}
+              onSelectChipDate={handleSelectChipDate}
+              onResetChipDate={() => {
+                setChipAsOfDate(null)
+                notify(`筹码分布已恢复至最新交易日${chipLatestDate}`)
+              }}
             />
           )}
         </section>

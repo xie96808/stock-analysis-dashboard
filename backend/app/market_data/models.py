@@ -26,6 +26,10 @@ class BarPayload(BaseModel):
     close: float
     volume: float = Field(ge=0)
     amount: float | None = None
+    # Decimal fraction of the circulating shares traded during this bar.
+    # Example: 0.023 means 2.3%.  Daily A-share bars derive this from the
+    # provider's circulating-share figure when a historical rate is absent.
+    turnover_rate: float | None = Field(default=None, ge=0)
 
 
 class BarsResponse(BaseModel):

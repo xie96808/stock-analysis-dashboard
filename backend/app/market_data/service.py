@@ -41,7 +41,9 @@ class MarketDataService:
     ) -> BarsResponse:
         instrument: Instrument = normalize_symbol(raw_symbol)
         normalized_limit = max(1, min(limit, 2000))
-        cache_key = f"{instrument.provider_symbol}-{timeframe}-{adjustment}"
+        # v2 adds per-bar turnover metadata; keeping the schema in the key
+        # prevents an older cache entry from silently downgrading chip quality.
+        cache_key = f"v2-{instrument.provider_symbol}-{timeframe}-{adjustment}"
         cached_value = None if refresh else self.cache.get(cache_key, self._ttl(timeframe))
         if cached_value and cached_value.get("requested_limit", 0) >= normalized_limit:
             response = BarsResponse.model_validate(cached_value)

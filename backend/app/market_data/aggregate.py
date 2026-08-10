@@ -19,6 +19,13 @@ def aggregate_bars(bars: list[BarPayload], timeframe: Literal["1w", "1M"]) -> li
     aggregated: list[BarPayload] = []
     for group in groups.values():
         amount_values = [bar.amount for bar in group if bar.amount is not None]
+        turnover_values = [min(bar.turnover_rate, 1) for bar in group if bar.turnover_rate is not None]
+        effective_turnover = None
+        if turnover_values:
+            survival = 1.0
+            for turnover in turnover_values:
+                survival *= 1 - turnover
+            effective_turnover = 1 - survival
         aggregated.append(
             BarPayload(
                 time=group[-1].time[:10],
@@ -28,6 +35,7 @@ def aggregate_bars(bars: list[BarPayload], timeframe: Literal["1w", "1M"]) -> li
                 close=group[-1].close,
                 volume=sum(bar.volume for bar in group),
                 amount=sum(amount_values) if amount_values else None,
+                turnover_rate=effective_turnover,
             )
         )
     return aggregated
