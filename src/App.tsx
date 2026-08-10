@@ -288,6 +288,9 @@ export default function App() {
   const workspaceKey = `${instrument.key}::${workspace}`
   const drawings = drawingStore.workspaces[workspaceKey] ?? []
   const handleHoverBar = useCallback((bar: StockBar | null) => setHoverBar(bar), [])
+  const handleSelectBar = useCallback((bar: StockBar) => {
+    if (timeframe === '日K') setSelectedDay(bar)
+  }, [timeframe])
   const refreshJournal = useCallback(async (signal?: AbortSignal) => {
     const result = await listJournalRecords({ includeDeleted: true }, signal)
     setRecords(result.filter((record) => !record.deleted_at).map(recordFromSummary))
@@ -881,9 +884,7 @@ export default function App() {
               onCommitDrawings={commitDrawings}
               fontScale={fontScale}
               onHoverBar={handleHoverBar}
-              onSelectBar={(bar) => {
-                if (timeframe === '日K') setSelectedDay(bar)
-              }}
+              onSelectBar={handleSelectBar}
             />
           )}
         </section>

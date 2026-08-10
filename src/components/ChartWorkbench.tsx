@@ -147,6 +147,14 @@ export function ChartWorkbench({
   const hostRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  // Keep UI callbacks outside the chart-construction effect. Hovering updates
+  // the quote strip in App, which re-renders this component; rebuilding the
+  // chart on that render resets a user's wheel zoom and produces a visible
+  // full-canvas flash.
+  const onHoverBarRef = useRef(onHoverBar)
+  const onSelectBarRef = useRef(onSelectBar)
+  onHoverBarRef.current = onHoverBar
+  onSelectBarRef.current = onSelectBar
   const [geometry, setGeometry] = useState<OverlayGeometry>({
     profile: [],
     profileStats: { poc: 0, vah: 0, val: 0, pocY: null, vahY: null, valY: null },
@@ -385,15 +393,15 @@ export function ChartWorkbench({
 
     chart.subscribeCrosshairMove((param) => {
       if (!param.time) {
-        onHoverBar(null)
+        onHoverBarRef.current(null)
         return
       }
-      onHoverBar(byTime.get(timeKey(param.time)) ?? null)
+      onHoverBarRef.current(byTime.get(timeKey(param.time)) ?? null)
     })
     chart.subscribeClick((param) => {
       if (!param.time) return
       const bar = byTime.get(timeKey(param.time))
-      if (bar) onSelectBar(bar)
+      if (bar) onSelectBarRef.current(bar)
     })
     let profileTimer = 0
     const scheduleProfile = () => {
@@ -417,7 +425,7 @@ export function ChartWorkbench({
       chartRef.current = null
       candleRef.current = null
     }
-  }, [anchoredRange, bars, byTime, candleTheme, cleanMode, fontScale, indicators, instrumentLabel, isMinute, latestBar, logPrice, macd, onHoverBar, onSelectBar, timeframe])
+  }, [anchoredRange, bars, byTime, candleTheme, cleanMode, fontScale, indicators, isMinute, latestBar, logPrice, macd, timeframe])
 
   useEffect(() => {
     const series = candleRef.current
