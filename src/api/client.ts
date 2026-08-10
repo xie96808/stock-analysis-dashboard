@@ -1,9 +1,58 @@
 export type ApiHealth = {
   status: 'ok'
   service: string
-  phase: 'P1'
+  phase: string
   version: string
   timestamp: string
+}
+
+export type MarketInstrument = {
+  symbol: string
+  key: string
+  market: 'CN' | 'HK'
+  exchange: 'SZSE' | 'SSE' | 'BSE' | 'HKEX'
+  provider_symbol: string
+  currency: 'CNY' | 'HKD'
+  name: string | null
+}
+
+export type MarketBar = {
+  time: string
+  open: number
+  high: number
+  low: number
+  close: number
+  volume: number
+  amount: number | null
+}
+
+export type MarketTimeframe = '1m' | '5m' | '15m' | '30m' | '60m' | '1d' | '1w' | '1M'
+export type MarketAdjustment = 'none' | 'qfq' | 'hfq'
+
+export type MarketBarsResponse = {
+  instrument: MarketInstrument
+  timeframe: MarketTimeframe
+  adjustment: MarketAdjustment
+  adjustment_applied: MarketAdjustment
+  source: string
+  fetched_at: string
+  cached: boolean
+  delayed: boolean
+  requested_limit: number
+  bars: MarketBar[]
+}
+
+export type MarketQuoteResponse = {
+  instrument: MarketInstrument
+  last: number
+  previous_close: number | null
+  open: number | null
+  high: number | null
+  low: number | null
+  volume: number | null
+  timestamp: string | null
+  source: string
+  delayed: boolean
 }
 
 export type DemoSnapshot = {
@@ -36,4 +85,33 @@ export function getApiHealth(signal?: AbortSignal) {
 
 export function getDemoSnapshot(signal?: AbortSignal) {
   return requestJson<DemoSnapshot>('/api/demo/snapshot/001280', signal)
+}
+
+export function resolveInstrument(input: string, signal?: AbortSignal) {
+  return requestJson<MarketInstrument>(`/api/instruments/resolve?input=${encodeURIComponent(input)}`, signal)
+}
+
+export function getMarketBars(
+  symbol: string,
+  options: {
+    timeframe: MarketTimeframe
+    adjustment: MarketAdjustment
+    limit?: number
+    refresh?: boolean
+    tradingDate?: string
+  },
+  signal?: AbortSignal,
+) {
+  const query = new URLSearchParams({
+    timeframe: options.timeframe,
+    adjustment: options.adjustment,
+    limit: String(options.limit ?? 640),
+  })
+  if (options.refresh) query.set('refresh', 'true')
+  if (options.tradingDate) query.set('trading_date', options.tradingDate)
+  return requestJson<MarketBarsResponse>(`/api/market/bars/${encodeURIComponent(symbol)}?${query}`, signal)
+}
+
+export function getMarketQuote(symbol: string, signal?: AbortSignal) {
+  return requestJson<MarketQuoteResponse>(`/api/market/quote/${encodeURIComponent(symbol)}`, signal)
 }

@@ -141,9 +141,19 @@ button {
 }
 
 .search-market {
+  padding: 2px 4px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
   color: var(--muted-2);
+  cursor: pointer;
   font-size: 11px;
   font-weight: 700;
+}
+
+.search-market:hover {
+  background: #e9edf5;
+  color: var(--blue);
 }
 
 .header-nav {
@@ -299,6 +309,10 @@ button {
   color: #d94d61;
   font-size: 13px;
   font-weight: 620;
+}
+
+.instrument-price .is-negative {
+  color: #15936e;
 }
 
 .ohlc-strip {
@@ -473,6 +487,17 @@ button {
   border-radius: 50%;
   background: var(--green);
   box-shadow: 0 0 0 3px rgba(26, 155, 117, 0.11);
+}
+
+.data-status.is-loading i {
+  background: #d79b27;
+  box-shadow: 0 0 0 3px rgba(215, 155, 39, 0.12);
+}
+
+.data-status.is-error i,
+.data-status.is-fallback i {
+  background: #d45c67;
+  box-shadow: 0 0 0 3px rgba(212, 92, 103, 0.11);
 }
 
 .journal-toggle {
