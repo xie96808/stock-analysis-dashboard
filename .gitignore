@@ -16,3 +16,5 @@ data/*.db
 data/*.sqlite*
 data/cache/
 data/journal/
+data/backups/
+data/exports/

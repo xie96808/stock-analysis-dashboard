@@ -1,6 +1,6 @@
 # A/H 股画线分析看板开发计划
 
-> 状态：P0–P5 已完成；当前进入P6预测日志与历史追溯
+> 状态：P0–P6 已完成；当前进入P7筹码成本、质量与打包
 > 建立日期：2026-08-09  
 > 项目目录：`stock-analysis-dashboard/`
 
@@ -511,6 +511,8 @@ stock-analysis-dashboard/
 - 标准 Markdown 单条导出；
 - 项目 ZIP 导出、校验和恢复；
 - 每日自动备份及最近 30 份轮换保留。
+
+**完成记录（2026-08-10）：** SQLite追加revision、PNG快照、版本对比、当日视角、回收站、Markdown/ZIP导入导出与每日备份已完成；详见 [`P6_REPORT.md`](./P6_REPORT.md)。
 
 ### P7：筹码成本、质量与打包
 
