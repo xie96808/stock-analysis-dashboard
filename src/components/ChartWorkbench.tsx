@@ -17,6 +17,8 @@ import {
   type WhitespaceData,
 } from 'lightweight-charts'
 import { calculateMacd, movingAverage, type StockBar } from '../data/fixture'
+import type { Drawing } from '../drawings/model'
+import { DrawingLayer } from './DrawingLayer'
 
 export type IndicatorConfig = {
   maEnabled: boolean
@@ -33,11 +35,17 @@ export type IndicatorConfig = {
 type Props = {
   bars: StockBar[]
   instrumentLabel: string
+  symbol: string
+  market: 'CN' | 'HK'
   timeframe: string
   logPrice: boolean
   profileVisible: boolean
   cleanMode: boolean
   indicators: IndicatorConfig
+  activeTool: string
+  snapMode: 'off' | 'weak' | 'strong'
+  drawings: Drawing[]
+  onCommitDrawings: (next: Drawing[]) => void
   fontScale: 'standard' | 'large' | 'xlarge'
   onHoverBar: (bar: StockBar | null) => void
   onSelectBar: (bar: StockBar) => void
@@ -46,6 +54,8 @@ type Props = {
 type OverlayGeometry = {
   profile: { y: number; width: number; sell: number; buy: number; emphasis?: boolean }[]
   mainPaneHeight: number
+  width: number
+  revision: number
 }
 
 function businessDay(date: string): BusinessDay {
@@ -125,11 +135,17 @@ function visualProfile(bars: StockBar[], bins = 18) {
 export function ChartWorkbench({
   bars,
   instrumentLabel,
+  symbol,
+  market,
   timeframe,
   logPrice,
   profileVisible,
   cleanMode,
   indicators,
+  activeTool,
+  snapMode,
+  drawings,
+  onCommitDrawings,
   fontScale,
   onHoverBar,
   onSelectBar,
@@ -137,7 +153,7 @@ export function ChartWorkbench({
   const hostRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
-  const [geometry, setGeometry] = useState<OverlayGeometry>({ profile: [], mainPaneHeight: 420 })
+  const [geometry, setGeometry] = useState<OverlayGeometry>({ profile: [], mainPaneHeight: 420, width: 0, revision: 0 })
 
   const byTime = useMemo(() => new Map(bars.map((bar) => [timeKey(chartTime(bar.date)), bar])), [bars])
   const macd = useMemo(
@@ -323,7 +339,12 @@ export function ChartWorkbench({
           emphasis: row.emphasis,
         }]
       })
-      setGeometry({ profile, mainPaneHeight: chart.panes()[0]?.getHeight() ?? host.clientHeight * 0.64 })
+      setGeometry((current) => ({
+        profile,
+        mainPaneHeight: chart.panes()[0]?.getHeight() ?? host.clientHeight * 0.64,
+        width: host.clientWidth,
+        revision: current.revision + 1,
+      }))
     }
 
     chart.timeScale().fitContent()
@@ -378,6 +399,21 @@ export function ChartWorkbench({
   return (
     <div className="chart-stage" aria-label={`${instrumentLabel}${timeframe}图表`}>
       <div ref={hostRef} className="chart-canvas" />
+      <DrawingLayer
+        chart={chartRef.current}
+        candleSeries={candleRef.current}
+        width={geometry.width}
+        mainPaneHeight={geometry.mainPaneHeight}
+        viewportRevision={geometry.revision}
+        symbol={symbol}
+        market={market}
+        timeframe={timeframe}
+        activeTool={activeTool}
+        bars={bars}
+        snapMode={snapMode}
+        drawings={drawings}
+        onCommit={onCommitDrawings}
+      />
       {!cleanMode && indicators.volumeEnabled && <div className="pane-label pane-label-volume" style={{ top: geometry.mainPaneHeight + 10 }}>
         <strong>VOL</strong>
         <span>{formatVolume(latestBar?.volume ?? 0)}</span>

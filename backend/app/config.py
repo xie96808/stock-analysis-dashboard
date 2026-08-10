@@ -8,8 +8,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "Stock Analysis Dashboard API"
-    version: str = "0.4.0-p3"
-    phase: str = "P3"
+    version: str = "0.5.0-p4"
+    phase: str = "P4"
     host: str = "127.0.0.1"
     port: int = 8000
     data_dir: Path = PROJECT_ROOT / "data"

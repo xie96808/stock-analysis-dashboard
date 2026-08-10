@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- 阶段：P3 指标与多面板已完成，正在推进P4画线系统。
+- 阶段：P4 画线系统已完成，正在推进P5成交量分布。
 - 运行形式：本机 Web 应用，桌面浏览器优先，平板横屏为第二优先级。
 - 设计基准：用户提供的 TradingView 截图与同花顺对比截图。
 - 核心需求：横轴按真实日期自由缩放和延伸；纵轴支持普通价格与 Log 价格切换。
@@ -25,6 +25,8 @@
 - [P2 1440×900 预览](./docs/p2-preview-1440x900.png)
 - [P3 验收报告](./docs/P3_REPORT.md)
 - [P3 用户验收单](./docs/P3_ACCEPTANCE_CHECKLIST.md)
+- [P4 验收报告](./docs/P4_REPORT.md)
+- [P4 用户验收单](./docs/P4_ACCEPTANCE_CHECKLIST.md)
 
 ## 本地运行
 
