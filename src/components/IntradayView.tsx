@@ -16,6 +16,7 @@ type Props = {
   bar: StockBar
   points?: IntradayPoint[]
   fontScale: 'standard' | 'large' | 'xlarge'
+  onClose: () => void
 }
 
 function formatShanghaiTime(time: Time) {
@@ -28,7 +29,7 @@ function formatShanghaiTime(time: Time) {
   }).format(new Date(time * 1000))
 }
 
-export function IntradayView({ bar, points: suppliedPoints, fontScale }: Props) {
+export function IntradayView({ bar, points: suppliedPoints, fontScale, onClose }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const points = useMemo(
     () => suppliedPoints?.length ? suppliedPoints : createIntradayFixture(bar),
@@ -150,6 +151,7 @@ export function IntradayView({ bar, points: suppliedPoints, fontScale }: Props) 
         <span>收 {bar.close.toFixed(2)}</span>
       </div>
       <div ref={hostRef} className="intraday-canvas" />
+      <button type="button" className="intraday-exit" onClick={onClose}>← 返回日K</button>
       <div className="intraday-tip">拖动或滚轮缩放 · 点击“返回日K”回到日线</div>
     </div>
   )

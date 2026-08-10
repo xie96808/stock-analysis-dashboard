@@ -18,7 +18,7 @@ def test_health() -> None:
     payload = response.json()
     assert payload["status"] == "ok"
     assert payload["phase"] == "P7"
-    assert payload["version"] == "1.0.1"
+    assert payload["version"] == "1.0.2"
 
 
 def test_demo_snapshot() -> None:
