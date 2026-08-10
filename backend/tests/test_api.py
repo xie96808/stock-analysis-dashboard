@@ -30,6 +30,14 @@ def test_demo_snapshot() -> None:
     assert payload["realtime"] is False
 
 
+def test_market_provider_status_exposes_priority_order() -> None:
+    response = asyncio.run(get("/api/market/providers"))
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["name"] for item in payload] == ["tencent-public", "yahoo-chart"]
+    assert [item["priority"] for item in payload] == [1, 2]
+
+
 def test_resolve_a_share() -> None:
     response = asyncio.run(get("/api/instruments/resolve?input=001280"))
     assert response.status_code == 200

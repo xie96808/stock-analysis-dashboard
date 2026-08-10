@@ -10,6 +10,7 @@ function response(): MarketBarsResponse {
     },
     timeframe: '1m', adjustment: 'none', adjustment_applied: 'none',
     source: 'test', fetched_at: '2026-08-11T00:00:00Z', cached: false, delayed: true, requested_limit: 2,
+    provider_chain: ['test'], fallback_used: false, stale: false, freshness_seconds: 0, quality_issues: [],
     bars: [
       { time: '2026-08-11 09:30', open: 10, high: 11, low: 9, close: 10, volume: 100, amount: 1_050, turnover_rate: null },
       { time: '2026-08-11 09:31', open: 10, high: 12, low: 10, close: 12, volume: 100, amount: 1_150, turnover_rate: null },

@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.app.market_data.models import Adjustment, BarPayload, Timeframe
+from backend.app.market_data.base import ProviderError
 from backend.app.market_data.service import MarketDataService
 from backend.app.market_data.symbols import Instrument
 
@@ -35,6 +36,23 @@ class FakeProvider:
             "测试标的",
             {},
         )
+
+    def quote_from_node(self, instrument: Instrument, node: dict[str, Any], name: str | None):
+        return None
+
+
+class FailingProvider(FakeProvider):
+    def __init__(self, name: str = "failing-provider") -> None:
+        super().__init__()
+        self.name = name
+
+    async def daily_bars(self, instrument: Instrument, adjustment: Adjustment, limit: int):
+        self.calls += 1
+        raise ProviderError("simulated outage")
+
+    async def minute_bars(self, instrument: Instrument, timeframe: Timeframe, limit: int):
+        self.calls += 1
+        raise ProviderError("simulated outage")
 
 
 def test_service_caches_daily_bars(tmp_path: Path) -> None:
@@ -74,3 +92,47 @@ def test_refresh_merges_new_bars_into_local_history(tmp_path: Path) -> None:
     refreshed = asyncio.run(service.get_bars("001280", "1d", "qfq", 20, refresh=True))
     assert [item.time for item in first.bars] == ["2026-08-06", "2026-08-07"]
     assert [item.time for item in refreshed.bars] == ["2026-08-06", "2026-08-07", "2026-08-10"]
+
+
+def test_service_switches_to_secondary_provider_and_exposes_health(tmp_path: Path) -> None:
+    primary = FailingProvider("primary")
+    secondary = FakeProvider()
+    secondary.name = "secondary"
+    service = MarketDataService(tmp_path, providers=[primary, secondary])  # type: ignore[list-item]
+
+    result = asyncio.run(service.get_bars("001280", "1d", "qfq", 20))
+
+    assert result.source == "secondary"
+    assert result.fallback_used is True
+    assert result.provider_chain == ["primary", "secondary"]
+    status = {item["name"]: item for item in service.provider_status()}
+    assert status["primary"]["healthy"] is False
+    assert status["secondary"]["healthy"] is True
+
+
+def test_service_uses_expired_cache_only_after_all_providers_fail(tmp_path: Path) -> None:
+    seed = MarketDataService(tmp_path, provider=FakeProvider())  # type: ignore[arg-type]
+    asyncio.run(seed.get_bars("001280", "1d", "qfq", 20))
+    service = MarketDataService(
+        tmp_path,
+        providers=[FailingProvider("primary"), FailingProvider("secondary")],  # type: ignore[list-item]
+    )
+
+    result = asyncio.run(service.get_bars("001280", "1d", "qfq", 20, refresh=True))
+
+    assert result.stale is True
+    assert result.cached is True
+    assert result.fallback_used is True
+    assert "过期本地缓存" in result.quality_issues[-1]
+
+
+def test_service_flags_invalid_ohlc_without_silently_rewriting_it(tmp_path: Path) -> None:
+    provider = FakeProvider()
+
+    async def invalid_daily(instrument: Instrument, adjustment: Adjustment, limit: int):
+        return [BarPayload(time="2026-08-10", open=10, high=9, low=8, close=11, volume=10)], "异常样例", {}
+
+    provider.daily_bars = invalid_daily  # type: ignore[method-assign]
+    result = asyncio.run(MarketDataService(tmp_path, provider=provider).get_bars("001280", "1d", "qfq", 20))  # type: ignore[arg-type]
+    assert result.bars[0].high == 9
+    assert any("OHLC" in issue for issue in result.quality_issues)

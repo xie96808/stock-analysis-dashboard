@@ -181,6 +181,13 @@ function compactVolume(volume: number) {
   return String(Math.round(volume))
 }
 
+function formatFreshness(seconds: number) {
+  if (seconds < 60) return `${seconds}秒`
+  if (seconds < 3_600) return `${Math.floor(seconds / 60)}分钟`
+  if (seconds < 86_400) return `${Math.floor(seconds / 3_600)}小时`
+  return `${Math.floor(seconds / 86_400)}天`
+}
+
 const fallbackInstrument: MarketInstrument = {
   symbol: '001280',
   key: 'SZSE:001280',
@@ -229,7 +236,10 @@ export default function App() {
   const [activeSymbol, setActiveSymbol] = useState('001280')
   const [adjustment, setAdjustment] = useState<MarketAdjustment>('qfq')
   const [marketState, setMarketState] = useState<'loading' | 'ready' | 'fallback' | 'error'>('loading')
-  const [marketMeta, setMarketMeta] = useState({ source: 'deterministic-fixture', cached: false, delayed: true, fetchedAt: null as string | null })
+  const [marketMeta, setMarketMeta] = useState({
+    source: 'deterministic-fixture', cached: false, delayed: true, fetchedAt: null as string | null,
+    fallbackUsed: false, stale: false, freshnessSeconds: 0, qualityIssues: [] as string[], providerChain: [] as string[],
+  })
   const [hoverBar, setHoverBar] = useState<StockBar | null>(null)
   const [logPrice, setLogPrice] = useState(true)
   const [percentPrice, setPercentPrice] = useState(false)
@@ -502,7 +512,17 @@ export default function App() {
         setChipBars(chipResponse ? toStockBars(chipResponse) : selectedTimeframe === '1d' ? nextBars : [])
         setInstrument(response.instrument)
         setQuote(currentQuote)
-        setMarketMeta({ source: response.source, cached: response.cached, delayed: response.delayed, fetchedAt: response.fetched_at })
+        setMarketMeta({
+          source: response.source,
+          cached: response.cached,
+          delayed: response.delayed,
+          fetchedAt: response.fetched_at,
+          fallbackUsed: response.fallback_used,
+          stale: response.stale,
+          freshnessSeconds: response.freshness_seconds,
+          qualityIssues: response.quality_issues,
+          providerChain: response.provider_chain,
+        })
         setMarketState('ready')
         if (forceRefresh) notify(`已刷新${response.instrument.name ?? response.instrument.symbol}最新行情`)
       })
@@ -517,7 +537,10 @@ export default function App() {
           setBars(fixtureBars)
           setChipBars(fixtureBars)
           setInstrument(fallbackInstrument)
-          setMarketMeta({ source: 'deterministic-fixture', cached: false, delayed: true, fetchedAt: null })
+          setMarketMeta({
+            source: 'deterministic-fixture', cached: false, delayed: true, fetchedAt: null,
+            fallbackUsed: false, stale: false, freshnessSeconds: 0, qualityIssues: [], providerChain: [],
+          })
           setMarketState('fallback')
           notify('行情服务暂未连接，已保留可交互样例数据')
         } else {
@@ -1035,8 +1058,11 @@ export default function App() {
           disabled={marketState === 'loading' || marketRefreshing}
           onClick={requestMarketRefresh}
         ><Icon name="refresh" />{marketRefreshing ? '刷新中' : '刷新'}</button>
-        <span className={`data-status is-${marketRefreshing ? 'loading' : marketState}`} title={`数据源：${marketMeta.source} · 获取时间：${marketFetchedAtLabel}`}>
-          <i />{marketRefreshing ? '正在获取最新数据' : marketState === 'loading' ? '读取行情' : marketState === 'fallback' ? '样例降级' : marketState === 'error' ? '读取失败' : `${marketMeta.delayed ? '延时' : '实时'}数据${marketMeta.cached ? ' · 缓存' : ''}`}
+        <span
+          className={`data-status is-${marketRefreshing ? 'loading' : marketMeta.stale ? 'error' : marketState}`}
+          title={`数据源：${marketMeta.source} · 获取时间：${marketFetchedAtLabel} · 行情距今：${formatFreshness(marketMeta.freshnessSeconds)}${marketMeta.providerChain.length ? ` · 尝试：${marketMeta.providerChain.join(' → ')}` : ''}${marketMeta.qualityIssues.length ? ` · 提示：${marketMeta.qualityIssues.join('；')}` : ''}`}
+        >
+          <i />{marketRefreshing ? '正在获取最新数据' : marketState === 'loading' ? '读取行情' : marketState === 'fallback' ? '样例降级' : marketState === 'error' ? '读取失败' : marketMeta.stale ? '过期缓存 · 注意' : marketMeta.fallbackUsed ? '备用行情源' : `${marketMeta.delayed ? '延时' : '实时'}数据${marketMeta.cached ? ' · 缓存' : ''}`}
         </span>
         <button className="journal-toggle" onClick={() => setJournalOpen((value) => !value)}>
           <Icon name="journal" />

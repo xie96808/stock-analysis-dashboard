@@ -41,6 +41,11 @@ export type MarketBarsResponse = {
   cached: boolean
   delayed: boolean
   requested_limit: number
+  provider_chain: string[]
+  fallback_used: boolean
+  stale: boolean
+  freshness_seconds: number
+  quality_issues: string[]
   bars: MarketBar[]
 }
 
@@ -55,6 +60,17 @@ export type MarketQuoteResponse = {
   timestamp: string | null
   source: string
   delayed: boolean
+  fallback_used: boolean
+  quality_issues: string[]
+}
+
+export type MarketProviderStatus = {
+  name: string
+  priority: number
+  healthy: boolean
+  failures: number
+  last_error: string | null
+  last_success_at: string | null
 }
 
 export type JournalRevision = {
@@ -187,6 +203,10 @@ export function getMarketBars(
 
 export function getMarketQuote(symbol: string, signal?: AbortSignal) {
   return requestJson<MarketQuoteResponse>(`/api/market/quote/${encodeURIComponent(symbol)}`, signal)
+}
+
+export function getMarketProviders(signal?: AbortSignal) {
+  return requestJson<MarketProviderStatus[]>('/api/market/providers', signal)
 }
 
 export function listJournalRecords(options: { dateKey?: string; symbol?: string; includeDeleted?: boolean } = {}, signal?: AbortSignal) {

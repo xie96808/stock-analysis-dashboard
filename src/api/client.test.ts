@@ -19,6 +19,11 @@ const response = {
   cached: false,
   delayed: true,
   requested_limit: 640,
+  provider_chain: ['test'],
+  fallback_used: false,
+  stale: false,
+  freshness_seconds: 0,
+  quality_issues: [],
   bars: [],
 }
 

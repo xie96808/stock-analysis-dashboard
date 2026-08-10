@@ -13,7 +13,7 @@ from .config import settings
 from .market_data import MarketDataService
 from .market_data.models import Adjustment, BarsResponse, InstrumentPayload, QuoteResponse, Timeframe
 from .market_data.symbols import SymbolError
-from .market_data.tencent import ProviderError
+from .market_data.base import ProviderError
 from .schemas import DemoInstrument, DemoSnapshotResponse, HealthResponse
 from .journal import ImportProjectInput, JournalCreateInput, JournalRepository, JournalRevisionInput
 
@@ -93,6 +93,11 @@ async def market_quote(symbol: str) -> QuoteResponse:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except (ProviderError, httpx.HTTPError, ValueError) as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
+
+
+@app.get("/api/market/providers", tags=["market-data"])
+async def market_providers() -> list[dict]:
+    return market_data.provider_status()
 
 
 @app.get("/api/journal/records", tags=["journal"])
