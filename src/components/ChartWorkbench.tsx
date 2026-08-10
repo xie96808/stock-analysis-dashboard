@@ -17,6 +17,7 @@ import {
   type WhitespaceData,
 } from 'lightweight-charts'
 import { calculateMacd, movingAverage, type StockBar } from '../data/fixture'
+import { placeIntradayPrompt, supportsIntraday } from '../chart/intraday'
 import type { Drawing } from '../drawings/model'
 import { DrawingLayer } from './DrawingLayer'
 import { calculateVolumeProfile } from '../profile/calculate'
@@ -65,6 +66,12 @@ type OverlayGeometry = {
   mainPaneHeight: number
   width: number
   revision: number
+}
+
+type IntradayPrompt = {
+  bar: StockBar
+  x: number
+  y: number
 }
 
 function businessDay(date: string): BusinessDay {
@@ -147,14 +154,18 @@ export function ChartWorkbench({
   const hostRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  const intradayPromptRef = useRef<HTMLDivElement>(null)
   // Keep UI callbacks outside the chart-construction effect. Hovering updates
   // the quote strip in App, which re-renders this component; rebuilding the
   // chart on that render resets a user's wheel zoom and produces a visible
   // full-canvas flash.
   const onHoverBarRef = useRef(onHoverBar)
   const onSelectBarRef = useRef(onSelectBar)
+  const activeToolRef = useRef(activeTool)
   onHoverBarRef.current = onHoverBar
   onSelectBarRef.current = onSelectBar
+  activeToolRef.current = activeTool
+  const [intradayPrompt, setIntradayPrompt] = useState<IntradayPrompt | null>(null)
   const [geometry, setGeometry] = useState<OverlayGeometry>({
     profile: [],
     profileStats: { poc: 0, vah: 0, val: 0, pocY: null, vahY: null, valY: null },
@@ -399,9 +410,20 @@ export function ChartWorkbench({
       onHoverBarRef.current(byTime.get(timeKey(param.time)) ?? null)
     })
     chart.subscribeClick((param) => {
-      if (!param.time) return
+      if (!supportsIntraday(timeframe, activeToolRef.current) || !param.time || !param.point) {
+        setIntradayPrompt(null)
+        return
+      }
       const bar = byTime.get(timeKey(param.time))
-      if (bar) onSelectBarRef.current(bar)
+      if (!bar) {
+        setIntradayPrompt(null)
+        return
+      }
+      const position = placeIntradayPrompt(param.point, { width: host.clientWidth, height: host.clientHeight })
+      setIntradayPrompt({
+        bar,
+        ...position,
+      })
     })
     let profileTimer = 0
     const scheduleProfile = () => {
@@ -438,6 +460,28 @@ export function ChartWorkbench({
     })
   }, [isMinute, logPrice, percentPrice])
 
+  useEffect(() => {
+    setIntradayPrompt(null)
+  }, [symbol, timeframe])
+
+  useEffect(() => {
+    if (!intradayPrompt) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIntradayPrompt(null)
+    }
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (event.target instanceof Node && !intradayPromptRef.current?.contains(event.target)) {
+        setIntradayPrompt(null)
+      }
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    document.addEventListener('pointerdown', closeOnOutsidePointer)
+    return () => {
+      window.removeEventListener('keydown', closeOnEscape)
+      document.removeEventListener('pointerdown', closeOnOutsidePointer)
+    }
+  }, [intradayPrompt])
+
   const profileLevels = useMemo(() => {
     const source = [
       { name: 'VAH', price: geometry.profileStats.vah, y: geometry.profileStats.vahY },
@@ -470,6 +514,35 @@ export function ChartWorkbench({
         drawings={drawings}
         onCommit={onCommitDrawings}
       />
+      {intradayPrompt && supportsIntraday(timeframe, activeTool) && (
+        <div
+          ref={intradayPromptRef}
+          className="intraday-prompt"
+          role="dialog"
+          aria-label={`${intradayPrompt.bar.date.slice(0, 10)} 日K操作`}
+          style={{ left: intradayPrompt.x, top: intradayPrompt.y }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <div className="intraday-prompt-heading">
+            <span>{intradayPrompt.bar.date.slice(0, 10)}</span>
+            <button type="button" aria-label="关闭日K操作菜单" onClick={() => setIntradayPrompt(null)}>×</button>
+          </div>
+          <div className="intraday-prompt-ohlc">
+            <span>开 {intradayPrompt.bar.open.toFixed(2)}</span>
+            <span>收 {intradayPrompt.bar.close.toFixed(2)}</span>
+          </div>
+          <button
+            type="button"
+            className="intraday-prompt-action"
+            onClick={() => {
+              onSelectBarRef.current(intradayPrompt.bar)
+              setIntradayPrompt(null)
+            }}
+          >
+            查看当日分时图
+          </button>
+        </div>
+      )}
       <ChipCostPanel bars={bars} currentPrice={latestBar?.close ?? 0} visible={chipVisible && !cleanMode && market === 'CN'} />
       {!cleanMode && indicators.volumeEnabled && <div className="pane-label pane-label-volume" style={{ top: geometry.mainPaneHeight + 10 }}>
         <strong>VOL</strong>

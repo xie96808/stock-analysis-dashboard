@@ -882,9 +882,98 @@ button {
   pointer-events: none;
 }
 
+.intraday-exit {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 8;
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid #bdc9dc;
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 5px 16px rgba(31, 43, 70, 0.1);
+  color: #3559b7;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 680;
+}
+
+.intraday-exit:hover {
+  border-color: #7893d8;
+  background: #f4f7ff;
+}
+
 .chart-canvas {
   position: absolute;
   inset: 0;
+}
+
+.intraday-prompt {
+  position: absolute;
+  z-index: 30;
+  width: 224px;
+  padding: 10px;
+  border: 1px solid #cfd6e2;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 14px 34px rgba(24, 34, 55, 0.18);
+  color: #303641;
+}
+
+.intraday-prompt-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 14px;
+  font-weight: 720;
+}
+
+.intraday-prompt-heading button {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #7b8390;
+  cursor: pointer;
+  font: inherit;
+  font-size: 18px;
+}
+
+.intraday-prompt-heading button:hover {
+  background: #f0f2f6;
+  color: #303641;
+}
+
+.intraday-prompt-ohlc {
+  display: flex;
+  gap: 12px;
+  margin: 5px 0 9px;
+  color: #707886;
+  font-size: 12px;
+}
+
+.intraday-prompt-action {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid #4169d8;
+  border-radius: 6px;
+  background: #4269d8;
+  color: #fff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 680;
+}
+
+.intraday-prompt-action:hover {
+  border-color: #3158c6;
+  background: #3158c6;
 }
 
 .chart-watermark {

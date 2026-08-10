@@ -291,6 +291,10 @@ export default function App() {
   const handleSelectBar = useCallback((bar: StockBar) => {
     if (timeframe === '日K') setSelectedDay(bar)
   }, [timeframe])
+  const closeIntraday = useCallback(() => {
+    setSelectedDay(null)
+    setIntradayPoints([])
+  }, [])
   const refreshJournal = useCallback(async (signal?: AbortSignal) => {
     const result = await listJournalRecords({ includeDeleted: true }, signal)
     setRecords(result.filter((record) => !record.deleted_at).map(recordFromSummary))
@@ -430,6 +434,15 @@ export default function App() {
       .finally(() => setIntradayLoading(false))
     return () => controller.abort()
   }, [activeSymbol, selectedDay])
+
+  useEffect(() => {
+    if (!selectedDay) return
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeIntraday()
+    }
+    window.addEventListener('keydown', closeOnEscape)
+    return () => window.removeEventListener('keydown', closeOnEscape)
+  }, [closeIntraday, selectedDay])
 
   const notify = (message: string) => {
     setToast(message)
@@ -855,13 +868,13 @@ export default function App() {
             </div>
             <div className="chart-context-actions">
               {selectedDay ? (
-                <button className="back-to-daily" onClick={() => setSelectedDay(null)}>← 返回日K</button>
+                <button className="back-to-daily" onClick={closeIntraday}>← 返回日K</button>
               ) : <span>工作区：{workspace}</span>}
               <button aria-label="布局菜单" onClick={() => notify('当前工作区布局已自动保存')}><Icon name="more" /></button>
             </div>
           </div>
           {selectedDay ? (
-            <IntradayView bar={selectedDay} points={intradayPoints} fontScale={fontScale} />
+            <IntradayView bar={selectedDay} points={intradayPoints} fontScale={fontScale} onClose={closeIntraday} />
           ) : (
             <ChartWorkbench
               bars={chartBars}

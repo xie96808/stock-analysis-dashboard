@@ -1,7 +1,7 @@
 {
   "name": "stock-analysis-dashboard",
   "private": true,
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "TradingView-inspired local technical-analysis dashboard for China A-shares and Hong Kong stocks.",
   "license": "MIT",
   "type": "module",

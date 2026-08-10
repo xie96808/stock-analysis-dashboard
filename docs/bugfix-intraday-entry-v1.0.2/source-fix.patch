@@ -1,0 +1,267 @@
+diff --git a/src/App.tsx b/src/App.tsx
+index 79b2a8c..8cc176d 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -293,0 +294,4 @@ export default function App() {
++  const closeIntraday = useCallback(() => {
++    setSelectedDay(null)
++    setIntradayPoints([])
++  }, [])
+@@ -433,0 +438,9 @@ export default function App() {
++  useEffect(() => {
++    if (!selectedDay) return
++    const closeOnEscape = (event: KeyboardEvent) => {
++      if (event.key === 'Escape') closeIntraday()
++    }
++    window.addEventListener('keydown', closeOnEscape)
++    return () => window.removeEventListener('keydown', closeOnEscape)
++  }, [closeIntraday, selectedDay])
++
+@@ -858 +871 @@ export default function App() {
+-                <button className="back-to-daily" onClick={() => setSelectedDay(null)}>← 返回日K</button>
++                <button className="back-to-daily" onClick={closeIntraday}>← 返回日K</button>
+@@ -864 +877 @@ export default function App() {
+-            <IntradayView bar={selectedDay} points={intradayPoints} fontScale={fontScale} />
++            <IntradayView bar={selectedDay} points={intradayPoints} fontScale={fontScale} onClose={closeIntraday} />
+diff --git a/src/chart/intraday.test.ts b/src/chart/intraday.test.ts
+new file mode 100644
+index 0000000..1d68d4a
+--- /dev/null
++++ b/src/chart/intraday.test.ts
+@@ -0,0 +1,18 @@
++import { describe, expect, it } from 'vitest'
++import { placeIntradayPrompt, supportsIntraday } from './intraday'
++
++describe('intraday entry policy', () => {
++  it('only enables entry from daily candles', () => {
++    expect(supportsIntraday('日K')).toBe(true)
++    for (const timeframe of ['1分', '5分', '15分', '30分', '60分', '周K', '月K']) {
++      expect(supportsIntraday(timeframe)).toBe(false)
++    }
++    expect(supportsIntraday('日K', '趋势线')).toBe(false)
++  })
++
++  it('keeps the confirmation prompt inside the chart', () => {
++    expect(placeIntradayPrompt({ x: 300, y: 200 }, { width: 900, height: 600 })).toEqual({ x: 312, y: 212 })
++    expect(placeIntradayPrompt({ x: 895, y: 595 }, { width: 900, height: 600 })).toEqual({ x: 666, y: 474 })
++    expect(placeIntradayPrompt({ x: -20, y: -20 }, { width: 900, height: 600 })).toEqual({ x: 10, y: 10 })
++  })
++})
+diff --git a/src/chart/intraday.ts b/src/chart/intraday.ts
+new file mode 100644
+index 0000000..26a3a38
+--- /dev/null
++++ b/src/chart/intraday.ts
+@@ -0,0 +1,16 @@
++export type ChartPoint = { x: number; y: number }
++
++export function supportsIntraday(timeframe: string, activeTool = '选择') {
++  return timeframe === '日K' && activeTool === '选择'
++}
++
++export function placeIntradayPrompt(
++  point: ChartPoint,
++  host: { width: number; height: number },
++  prompt: { width: number; height: number } = { width: 224, height: 116 },
++) {
++  return {
++    x: Math.max(10, Math.min(point.x + 12, host.width - prompt.width - 10)),
++    y: Math.max(10, Math.min(point.y + 12, host.height - prompt.height - 10)),
++  }
++}
+diff --git a/src/components/ChartWorkbench.tsx b/src/components/ChartWorkbench.tsx
+index 9e3ed3c..983b6f9 100644
+--- a/src/components/ChartWorkbench.tsx
++++ b/src/components/ChartWorkbench.tsx
+@@ -19,0 +20 @@ import { calculateMacd, movingAverage, type StockBar } from '../data/fixture'
++import { placeIntradayPrompt, supportsIntraday } from '../chart/intraday'
+@@ -69,0 +71,6 @@ type OverlayGeometry = {
++type IntradayPrompt = {
++  bar: StockBar
++  x: number
++  y: number
++}
++
+@@ -149,0 +157 @@ export function ChartWorkbench({
++  const intradayPromptRef = useRef<HTMLDivElement>(null)
+@@ -155,0 +164 @@ export function ChartWorkbench({
++  const activeToolRef = useRef(activeTool)
+@@ -157,0 +167,2 @@ export function ChartWorkbench({
++  activeToolRef.current = activeTool
++  const [intradayPrompt, setIntradayPrompt] = useState<IntradayPrompt | null>(null)
+@@ -402 +413,4 @@ export function ChartWorkbench({
+-      if (!param.time) return
++      if (!supportsIntraday(timeframe, activeToolRef.current) || !param.time || !param.point) {
++        setIntradayPrompt(null)
++        return
++      }
+@@ -404 +418,9 @@ export function ChartWorkbench({
+-      if (bar) onSelectBarRef.current(bar)
++      if (!bar) {
++        setIntradayPrompt(null)
++        return
++      }
++      const position = placeIntradayPrompt(param.point, { width: host.clientWidth, height: host.clientHeight })
++      setIntradayPrompt({
++        bar,
++        ...position,
++      })
+@@ -440,0 +463,22 @@ export function ChartWorkbench({
++  useEffect(() => {
++    setIntradayPrompt(null)
++  }, [symbol, timeframe])
++
++  useEffect(() => {
++    if (!intradayPrompt) return
++    const closeOnEscape = (event: KeyboardEvent) => {
++      if (event.key === 'Escape') setIntradayPrompt(null)
++    }
++    const closeOnOutsidePointer = (event: PointerEvent) => {
++      if (event.target instanceof Node && !intradayPromptRef.current?.contains(event.target)) {
++        setIntradayPrompt(null)
++      }
++    }
++    window.addEventListener('keydown', closeOnEscape)
++    document.addEventListener('pointerdown', closeOnOutsidePointer)
++    return () => {
++      window.removeEventListener('keydown', closeOnEscape)
++      document.removeEventListener('pointerdown', closeOnOutsidePointer)
++    }
++  }, [intradayPrompt])
++
+@@ -472,0 +517,29 @@ export function ChartWorkbench({
++      {intradayPrompt && supportsIntraday(timeframe, activeTool) && (
++        <div
++          ref={intradayPromptRef}
++          className="intraday-prompt"
++          role="dialog"
++          aria-label={`${intradayPrompt.bar.date.slice(0, 10)} 日K操作`}
++          style={{ left: intradayPrompt.x, top: intradayPrompt.y }}
++          onPointerDown={(event) => event.stopPropagation()}
++        >
++          <div className="intraday-prompt-heading">
++            <span>{intradayPrompt.bar.date.slice(0, 10)}</span>
++            <button type="button" aria-label="关闭日K操作菜单" onClick={() => setIntradayPrompt(null)}>×</button>
++          </div>
++          <div className="intraday-prompt-ohlc">
++            <span>开 {intradayPrompt.bar.open.toFixed(2)}</span>
++            <span>收 {intradayPrompt.bar.close.toFixed(2)}</span>
++          </div>
++          <button
++            type="button"
++            className="intraday-prompt-action"
++            onClick={() => {
++              onSelectBarRef.current(intradayPrompt.bar)
++              setIntradayPrompt(null)
++            }}
++          >
++            查看当日分时图
++          </button>
++        </div>
++      )}
+diff --git a/src/components/IntradayView.tsx b/src/components/IntradayView.tsx
+index f9769df..97665bb 100644
+--- a/src/components/IntradayView.tsx
++++ b/src/components/IntradayView.tsx
+@@ -18,0 +19 @@ type Props = {
++  onClose: () => void
+@@ -31 +32 @@ function formatShanghaiTime(time: Time) {
+-export function IntradayView({ bar, points: suppliedPoints, fontScale }: Props) {
++export function IntradayView({ bar, points: suppliedPoints, fontScale, onClose }: Props) {
+@@ -152,0 +154 @@ export function IntradayView({ bar, points: suppliedPoints, fontScale }: Props)
++      <button type="button" className="intraday-exit" onClick={onClose}>← 返回日K</button>
+diff --git a/src/styles.css b/src/styles.css
+index c0a117e..25afeb8 100644
+--- a/src/styles.css
++++ b/src/styles.css
+@@ -884,0 +885,23 @@ button {
++.intraday-exit {
++  position: absolute;
++  top: 10px;
++  right: 12px;
++  z-index: 8;
++  min-height: 34px;
++  padding: 0 13px;
++  border: 1px solid #bdc9dc;
++  border-radius: 7px;
++  background: rgba(255, 255, 255, 0.96);
++  box-shadow: 0 5px 16px rgba(31, 43, 70, 0.1);
++  color: #3559b7;
++  cursor: pointer;
++  font: inherit;
++  font-size: 13px;
++  font-weight: 680;
++}
++
++.intraday-exit:hover {
++  border-color: #7893d8;
++  background: #f4f7ff;
++}
++
+@@ -889,0 +913,66 @@ button {
++.intraday-prompt {
++  position: absolute;
++  z-index: 30;
++  width: 224px;
++  padding: 10px;
++  border: 1px solid #cfd6e2;
++  border-radius: 9px;
++  background: rgba(255, 255, 255, 0.98);
++  box-shadow: 0 14px 34px rgba(24, 34, 55, 0.18);
++  color: #303641;
++}
++
++.intraday-prompt-heading {
++  display: flex;
++  align-items: center;
++  justify-content: space-between;
++  font-size: 14px;
++  font-weight: 720;
++}
++
++.intraday-prompt-heading button {
++  display: grid;
++  width: 24px;
++  height: 24px;
++  padding: 0;
++  place-items: center;
++  border: 0;
++  border-radius: 5px;
++  background: transparent;
++  color: #7b8390;
++  cursor: pointer;
++  font: inherit;
++  font-size: 18px;
++}
++
++.intraday-prompt-heading button:hover {
++  background: #f0f2f6;
++  color: #303641;
++}
++
++.intraday-prompt-ohlc {
++  display: flex;
++  gap: 12px;
++  margin: 5px 0 9px;
++  color: #707886;
++  font-size: 12px;
++}
++
++.intraday-prompt-action {
++  width: 100%;
++  min-height: 34px;
++  border: 1px solid #4169d8;
++  border-radius: 6px;
++  background: #4269d8;
++  color: #fff;
++  cursor: pointer;
++  font: inherit;
++  font-size: 13px;
++  font-weight: 680;
++}
++
++.intraday-prompt-action:hover {
++  border-color: #3158c6;
++  background: #3158c6;
++}
++
