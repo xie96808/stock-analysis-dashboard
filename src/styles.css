@@ -654,6 +654,31 @@ button {
   box-shadow: 0 0 0 3px rgba(212, 92, 103, 0.11);
 }
 
+.market-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 64px;
+}
+
+.market-refresh svg {
+  width: 15px;
+  height: 15px;
+}
+
+.market-refresh.is-refreshing svg {
+  animation: market-refresh-spin 0.85s linear infinite;
+}
+
+.market-refresh:disabled {
+  cursor: wait;
+  opacity: 0.58;
+}
+
+@keyframes market-refresh-spin {
+  to { transform: rotate(360deg); }
+}
+
 .journal-toggle {
   display: flex;
   align-items: center;

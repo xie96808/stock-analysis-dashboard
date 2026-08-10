@@ -49,6 +49,7 @@ app.add_middleware(
 async def health() -> HealthResponse:
     return HealthResponse(
         service=settings.app_name,
+        phase=settings.phase,
         version=settings.version,
         timestamp=datetime.now(ZoneInfo("Asia/Shanghai")),
     )

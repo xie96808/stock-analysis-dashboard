@@ -22,6 +22,7 @@ type IconName =
   | 'more'
   | 'collapse'
   | 'fullscreen'
+  | 'refresh'
 
 type Props = SVGProps<SVGSVGElement> & { name: IconName }
 
@@ -56,6 +57,7 @@ export function Icon({ name, ...props }: Props) {
     more: <><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" /><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" /></>,
     collapse: <><path d="m14 7-5 5 5 5" /><path d="M19 4v16" /></>,
     fullscreen: <><path d="M8 4H4v4M16 4h4v4M20 16v4h-4M8 20H4v-4" /></>,
+    refresh: <><path d="M20 7v5h-5" /><path d="M4 17v-5h5" /><path d="M18.2 9A7 7 0 0 0 6.1 6.4L4 9M5.8 15A7 7 0 0 0 17.9 17.6L20 15" /></>,
   }
 
   return (
