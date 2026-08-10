@@ -24,6 +24,8 @@ export type MarketBar = {
   close: number
   volume: number
   amount: number | null
+  /** Decimal fraction: 0.023 means a 2.3% turnover rate. */
+  turnover_rate: number | null
 }
 
 export type MarketTimeframe = '1m' | '5m' | '15m' | '30m' | '60m' | '1d' | '1w' | '1M'

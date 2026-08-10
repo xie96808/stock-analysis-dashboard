@@ -1,5 +1,6 @@
 from backend.app.market_data.aggregate import aggregate_bars, aggregate_minute_bars
 from backend.app.market_data.models import BarPayload
+import pytest
 
 
 def bar(day: str, open_: float, high: float, low: float, close: float, volume: float) -> BarPayload:
@@ -35,6 +36,19 @@ def test_monthly_aggregation() -> None:
     )
     assert [item.time for item in result] == ["2026-07-31", "2026-08-31"]
     assert result[-1].volume == 220
+
+
+def test_aggregation_combines_turnover_as_surviving_chips() -> None:
+    result = aggregate_bars(
+        [
+            BarPayload(time="2026-08-03", open=10, high=11, low=9, close=10.5, volume=100, turnover_rate=0.1),
+            BarPayload(time="2026-08-04", open=10.5, high=12, low=10, close=11.5, volume=200, turnover_rate=0.2),
+        ],
+        "1w",
+    )
+    # Ten percent replaced and then twenty percent replaced leaves 72% of the
+    # opening chips, so the effective period turnover is 28%.
+    assert result[0].turnover_rate == pytest.approx(0.28)
 
 
 def test_weekly_aggregation_handles_suspension_and_holiday_without_phantom_bars() -> None:

@@ -39,6 +39,24 @@ class TencentProvider:
         quote = payload.get("qt", {}).get(provider_symbol, [])
         return str(quote[1]) if len(quote) > 1 else None
 
+    @staticmethod
+    def _circulating_shares(payload: dict[str, Any], provider_symbol: str) -> float | None:
+        """Return the provider's current circulating-share count for A shares.
+
+        Tencent's quote payload exposes circulating shares at field 72.  The
+        historical kline rows do not expose turnover, so this lets us derive a
+        documented end-of-day estimate instead of using relative volume as a
+        silent proxy.
+        """
+        quote = payload.get("qt", {}).get(provider_symbol, [])
+        if len(quote) <= 72:
+            return None
+        try:
+            value = float(quote[72])
+        except (TypeError, ValueError):
+            return None
+        return value if value > 0 else None
+
     async def daily_bars(
         self,
         instrument: Instrument,
@@ -54,6 +72,7 @@ class TencentProvider:
         preferred_key = {"none": "day", "qfq": "qfqday", "hfq": "hfqday"}[adjustment]
         rows = node.get(preferred_key) or node.get("day") or node.get("qfqday") or []
         multiplier = self._volume_multiplier(instrument)
+        circulating_shares = self._circulating_shares(node, instrument.provider_symbol) if instrument.market == "CN" else None
         bars = [
             BarPayload(
                 time=str(row[0]),
@@ -62,6 +81,7 @@ class TencentProvider:
                 high=float(row[3]),
                 low=float(row[4]),
                 volume=float(row[5]) * multiplier,
+                turnover_rate=(float(row[5]) * multiplier / circulating_shares) if circulating_shares else None,
             )
             for row in rows
             if len(row) >= 6

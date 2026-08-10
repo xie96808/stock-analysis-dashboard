@@ -554,6 +554,58 @@ button {
   font-weight: 650;
 }
 
+.distribution-switch {
+  display: flex;
+  height: 29px;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid #dfe3ea;
+  border-radius: 6px;
+  background: #f7f8fa;
+}
+
+.distribution-switch > span {
+  padding: 0 5px 0 6px;
+  color: #8a919d;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.distribution-switch button {
+  height: 23px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #626b79;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.distribution-switch button:hover {
+  background: #eceff4;
+  color: #2e3541;
+}
+
+.distribution-switch button.is-active {
+  background: #fff;
+  color: var(--blue);
+  box-shadow: 0 1px 3px rgba(31, 40, 59, 0.14);
+}
+
+.distribution-switch button[aria-disabled="true"] {
+  color: #b2b7c0;
+  cursor: not-allowed;
+}
+
+.distribution-visibility {
+  min-width: 45px;
+  padding-inline: 7px;
+}
+
 .profile-width-control {
   display: flex;
   height: 31px;
@@ -976,6 +1028,21 @@ button {
   background: #3158c6;
 }
 
+.intraday-prompt-action + .intraday-prompt-action {
+  margin-top: 6px;
+}
+
+.intraday-prompt-action.is-secondary {
+  border-color: #c7d2eb;
+  background: #f4f7ff;
+  color: #3559b7;
+}
+
+.intraday-prompt-action.is-secondary:hover {
+  border-color: #8ea5dc;
+  background: #e9efff;
+}
+
 .chart-watermark {
   position: absolute;
   top: 48%;
@@ -992,98 +1059,303 @@ button {
 
 .chip-cost-panel {
   position: absolute;
-  top: 44px;
-  left: 14px;
-  z-index: 8;
-  width: 238px;
-  padding: 11px;
-  border: 1px solid rgba(86, 105, 155, 0.26);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.95);
-  box-shadow: 0 12px 32px rgba(31, 40, 62, 0.12);
+  top: 0;
+  z-index: 3;
+  min-width: 218px;
+  max-width: 440px;
+  overflow: hidden;
+  border-left: 1px solid rgba(157, 167, 183, 0.46);
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.97) 28%);
+  box-shadow: -10px 0 24px rgba(31, 40, 62, 0.035);
   pointer-events: none;
 }
 
-.chip-cost-panel header {
+.chip-panel-heading {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  left: 9px;
+  z-index: 5;
   display: flex;
-  align-items: flex-start;
+  min-height: 39px;
+  align-items: center;
   justify-content: space-between;
   gap: 8px;
+  padding: 5px 7px;
+  border: 1px solid rgba(213, 218, 227, 0.9);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.93);
+  box-shadow: 0 3px 12px rgba(31, 40, 62, 0.05);
 }
 
-.chip-cost-panel header div,
-.chip-cost-panel header b {
+.chip-panel-heading > div {
   display: flex;
   flex-direction: column;
 }
 
-.chip-cost-panel header span,
-.chip-cost-panel header small {
-  color: #7c8491;
-  font-size: 9px;
+.chip-panel-heading strong {
+  color: #303744;
+  font-size: 14px;
+  line-height: 1.1;
 }
 
-.chip-cost-panel header strong {
+.chip-panel-heading span {
   margin-top: 2px;
-  color: #353c48;
-  font-size: 12px;
+  color: #727b89;
+  font-size: 11px;
 }
 
-.chip-cost-panel header b {
+.chip-heading-actions {
   align-items: flex-end;
-  color: #d95469;
-  font-size: 18px;
 }
 
-.chip-distribution {
-  display: flex;
-  min-height: 58px;
-  flex-direction: column-reverse;
-  justify-content: center;
-  gap: 1px;
-  margin: 9px 0;
+.chip-heading-actions em {
+  color: #7d8694;
+  font-size: 9px;
+  font-style: normal;
 }
 
-.chip-distribution i {
+.chip-heading-actions button {
+  margin-top: 3px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 680;
+  pointer-events: auto;
+}
+
+.chip-profile-bars {
+  position: absolute;
+  inset: 0;
+}
+
+.chip-panel-footer-space {
+  position: absolute;
+  right: 0;
+  left: 0;
+  z-index: 2;
+  border-top: 1px solid rgba(220, 225, 233, 0.72);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.98));
+}
+
+.chip-profile-bars > i {
+  position: absolute;
+  right: 0;
   display: block;
-  height: 2px;
-  min-width: 2px;
+  min-width: 3px;
+  transform: translateY(-50%);
+  opacity: 0.78;
 }
 
-.chip-distribution .is-profit {
-  background: linear-gradient(90deg, #597bd5, #7ca0ef);
+.chip-profile-bars > i.is-profit {
+  background: linear-gradient(90deg, rgba(230, 80, 107, 0.68), #e6506b);
 }
 
-.chip-distribution .is-loss {
-  background: linear-gradient(90deg, #d65a70, #ee95a5);
+.chip-profile-bars > i.is-loss {
+  background: linear-gradient(90deg, rgba(76, 135, 220, 0.6), #4c87dc);
 }
 
-.chip-cost-panel dl {
-  display: grid;
-  gap: 4px;
-  margin: 0;
+.chip-profile-bars > i.is-poc {
+  opacity: 1;
+  box-shadow: 0 0 0 1px rgba(43, 52, 68, 0.16);
 }
 
-.chip-cost-panel dl div {
+.chip-reference-line {
+  position: absolute;
+  right: 0;
+  left: 0;
+  z-index: 4;
   display: flex;
+  height: 1px;
+  align-items: center;
   justify-content: space-between;
-  color: #68717e;
+  border-top: 1px dashed currentColor;
+  color: #d8425d;
+}
+
+.chip-reference-line.is-average {
+  color: #d48e16;
+}
+
+.chip-reference-line span,
+.chip-reference-line strong {
+  padding: 2px 4px;
+  background: #d8425d;
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.chip-reference-line strong {
+  font-size: 13px;
+}
+
+.chip-reference-line.is-average span,
+.chip-reference-line.is-average strong {
+  background: #d48e16;
+}
+
+.chip-panel-summary {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  left: 9px;
+  z-index: 5;
+  padding: 6px 8px;
+  border: 1px solid rgba(210, 216, 225, 0.92);
+  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 6px 20px rgba(28, 36, 52, 0.08);
+  pointer-events: auto;
+  will-change: transform;
+}
+
+.chip-panel-summary.is-dragging {
+  box-shadow: 0 10px 28px rgba(28, 36, 52, 0.16);
+}
+
+.chip-summary-toolbar {
+  display: flex;
+  min-height: 21px;
+  align-items: center;
+  gap: 7px;
+  margin: -3px -5px 4px;
+  padding: 0 1px 3px 5px;
+  border-bottom: 1px solid #e8ebf0;
+  color: #677180;
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+
+.chip-panel-summary.is-dragging .chip-summary-toolbar {
+  cursor: grabbing;
+}
+
+.chip-summary-toolbar strong {
+  color: #424b59;
+  font-size: 11px;
+}
+
+.chip-summary-toolbar span {
+  flex: 1;
+  margin: 0;
+  color: #9aa1ac;
+  font-size: 9px;
+  text-align: right;
+}
+
+.chip-summary-toolbar button {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: #737c8a;
+  cursor: pointer;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+}
+
+.chip-summary-toolbar button:hover,
+.chip-summary-toolbar button:focus-visible {
+  background: #f0f3f8;
+  color: #303744;
+  outline: none;
+}
+
+.chip-summary-primary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #e8ebf0;
+}
+
+.chip-summary-primary span {
+  display: flex;
+  flex-direction: column;
+  color: #747d8b;
   font-size: 10px;
 }
 
-.chip-cost-panel dd {
-  margin: 0;
-  color: #303744;
-  font-weight: 650;
+.chip-summary-primary strong {
+  margin-top: 1px;
+  color: #d84c65;
+  font-size: 17px;
 }
 
-.chip-cost-panel p {
-  margin: 8px 0 0;
-  padding-top: 7px;
-  border-top: 1px solid #e8ebf0;
-  color: #9097a3;
+.chip-summary-primary span + span strong {
+  color: #d48e16;
+}
+
+.chip-panel-summary dl {
+  display: grid;
+  gap: 2px;
+  margin: 4px 0;
+}
+
+.chip-panel-summary dl div {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  align-items: center;
+  color: #66707e;
+  font-size: 10px;
+}
+
+.chip-panel-summary dd {
+  margin: 0;
+  color: #303744;
+  font-size: 11px;
+  font-weight: 680;
+}
+
+.chip-panel-summary dl small {
+  color: #89919e;
+  font-size: 9px;
+}
+
+.chip-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  line-height: 1.2;
+  color: #747d8b;
+  font-size: 9px;
+}
+
+.chip-legend span {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.chip-legend i {
+  width: 8px;
+  height: 8px;
+}
+
+.chip-legend i.is-profit {
+  background: #e6506b;
+}
+
+.chip-legend i.is-loss {
+  background: #4c87dc;
+}
+
+.chip-legend small {
+  flex-basis: 100%;
+  color: #9aa1ac;
   font-size: 8px;
-  line-height: 1.4;
 }
 
 .drawing-overlay {
@@ -2264,6 +2536,7 @@ button {
 .app-shell .workspace-select select,
 .app-shell .axis-toggle button,
 .app-shell .timeframes button,
+.app-shell .distribution-switch button,
 .app-shell .toolbar-toggle,
 .app-shell .toolbar-action,
 .app-shell .journal-toggle,
@@ -2287,7 +2560,8 @@ button {
 .app-shell .instrument-price span,
 .app-shell .chart-context strong,
 .app-shell .intraday-legend,
-.app-shell .profile-heading {
+.app-shell .profile-heading,
+.app-shell .chip-panel-heading strong {
   font-size: calc(13px + var(--font-adjust));
 }
 
@@ -2295,6 +2569,8 @@ button {
 .app-shell .pane-label,
 .app-shell .pane-label strong,
 .app-shell .profile-legend,
+.app-shell .chip-panel-heading span,
+.app-shell .chip-panel-summary dd,
 .app-shell .intraday-tip {
   font-size: calc(12px + var(--font-adjust));
 }
