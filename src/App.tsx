@@ -36,6 +36,7 @@ import { fixtureBars, type IntradayPoint, type StockBar } from './data/fixture'
 import type { Drawing, DrawingStore } from './drawings/model'
 import { resolveChipAsOfDate } from './distributions/model'
 import { toIntradayPoints, toStockBars } from './market/transform'
+import { marketSessionState } from './market/refreshSchedule'
 import { parseDrawingStore, parseIndicatorConfig, shanghaiDateKey } from './state/preferences'
 import './styles.css'
 
@@ -297,6 +298,10 @@ export default function App() {
   const [toast, setToast] = useState('正在连接本地行情与研究日志')
   const [marketRefreshRevision, setMarketRefreshRevision] = useState(0)
   const [marketRefreshing, setMarketRefreshing] = useState(false)
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(() => (
+    window.localStorage.getItem('dashboard-auto-refresh-v1') === 'true'
+  ))
+  const [autoRefreshSession, setAutoRefreshSession] = useState(() => marketSessionState(new Date(), fallbackInstrument.market))
   const [viewResetRevision, setViewResetRevision] = useState(0)
   const [chartDataRevision, setChartDataRevision] = useState({ id: 0, preserveView: false })
   const toastTimerRef = useRef<number | null>(null)
@@ -312,6 +317,13 @@ export default function App() {
       toastTimerRef.current = null
     }, 2_600)
   }, [])
+
+  const requestMarketRefresh = useCallback(() => {
+    if (marketState === 'loading' || marketRefreshing) return
+    setMarketRefreshRevision((current) => current + 1)
+  }, [marketRefreshing, marketState])
+  const requestMarketRefreshRef = useRef(requestMarketRefresh)
+  requestMarketRefreshRef.current = requestMarketRefresh
 
   const chartBars = useMemo(
     () => historicalCutoff ? bars.filter((bar) => bar.date.slice(0, 10) <= historicalCutoff) : bars,
@@ -388,6 +400,23 @@ export default function App() {
   useEffect(() => {
     window.localStorage.setItem('dashboard-font-scale', fontScale)
   }, [fontScale])
+
+  useEffect(() => {
+    window.localStorage.setItem('dashboard-auto-refresh-v1', String(autoRefreshEnabled))
+  }, [autoRefreshEnabled])
+
+  useEffect(() => {
+    const updateSession = () => setAutoRefreshSession(marketSessionState(new Date(), instrument.market))
+    updateSession()
+    const timer = window.setInterval(() => {
+      const session = marketSessionState(new Date(), instrument.market)
+      setAutoRefreshSession(session)
+      if (autoRefreshEnabled && session.open && document.visibilityState === 'visible') {
+        requestMarketRefreshRef.current()
+      }
+    }, 15_000)
+    return () => window.clearInterval(timer)
+  }, [autoRefreshEnabled, instrument.market])
 
   useEffect(() => {
     window.localStorage.setItem('dashboard-distribution-v2', JSON.stringify({
@@ -596,11 +625,6 @@ export default function App() {
       return
     }
     setActiveSymbol(value)
-  }
-
-  const requestMarketRefresh = () => {
-    if (marketState === 'loading' || marketRefreshing) return
-    setMarketRefreshRevision((current) => current + 1)
   }
 
   const replaceWorkspaceDrawings = useCallback((next: Drawing[]) => {
@@ -1061,6 +1085,16 @@ export default function App() {
           disabled={marketState === 'loading' || marketRefreshing}
           onClick={requestMarketRefresh}
         ><Icon name="refresh" />{marketRefreshing ? '刷新中' : '刷新'}</button>
+        <button
+          className={`toolbar-toggle auto-refresh${autoRefreshEnabled ? ' is-active' : ''}`}
+          type="button"
+          aria-pressed={autoRefreshEnabled}
+          title={`交易时段每15秒刷新；后台标签页自动暂停 · ${autoRefreshSession.label}`}
+          onClick={() => {
+            setAutoRefreshEnabled((value) => !value)
+            notify(autoRefreshEnabled ? '已关闭15秒自动刷新' : `已开启15秒自动刷新 · ${autoRefreshSession.label}`)
+          }}
+        >自动15秒<span className={`auto-refresh-dot${autoRefreshSession.open ? ' is-open' : ''}`} /></button>
         <span
           className={`data-status is-${marketRefreshing ? 'loading' : marketMeta.stale ? 'error' : marketState}`}
           title={`数据源：${marketMeta.source} · 获取时间：${marketFetchedAtLabel} · 行情距今：${formatFreshness(marketMeta.freshnessSeconds)}${marketMeta.providerChain.length ? ` · 尝试：${marketMeta.providerChain.join(' → ')}` : ''}${marketMeta.qualityIssues.length ? ` · 提示：${marketMeta.qualityIssues.join('；')}` : ''}`}

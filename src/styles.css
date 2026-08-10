@@ -675,6 +675,25 @@ button {
   opacity: 0.58;
 }
 
+.auto-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.auto-refresh-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #a8afba;
+}
+
+.auto-refresh-dot.is-open {
+  background: var(--green);
+  box-shadow: 0 0 0 3px rgba(26, 155, 117, 0.11);
+}
+
 @keyframes market-refresh-spin {
   to { transform: rotate(360deg); }
 }
