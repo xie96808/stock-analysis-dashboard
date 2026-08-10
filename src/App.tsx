@@ -29,6 +29,7 @@ import {
   type ProfileLayout,
 } from './components/ChartWorkbench'
 import { BacktestPanel } from './components/BacktestPanel'
+import { AlertPanel } from './components/AlertPanel'
 import { Icon } from './components/Icon'
 import { IntradayView } from './components/IntradayView'
 import { JournalCalendar } from './components/JournalCalendar'
@@ -38,6 +39,7 @@ import { resolveChipAsOfDate } from './distributions/model'
 import { toIntradayPoints, toStockBars } from './market/transform'
 import { marketSessionState } from './market/refreshSchedule'
 import { parseDrawingStore, parseIndicatorConfig, shanghaiDateKey } from './state/preferences'
+import { evaluateAlerts, parseAlertEvents, parseAlertRules, type AlertEvent, type AlertRule } from './alerts/model'
 import './styles.css'
 
 const LazyMarkdown = lazy(() => import('react-markdown'))
@@ -257,6 +259,9 @@ export default function App() {
   ))
   const [journalOpen, setJournalOpen] = useState(true)
   const [backtestOpen, setBacktestOpen] = useState(false)
+  const [alertOpen, setAlertOpen] = useState(false)
+  const [alertRules, setAlertRules] = useState<AlertRule[]>(() => parseAlertRules(window.localStorage.getItem('dashboard-alert-rules-v1')))
+  const [alertEvents, setAlertEvents] = useState<AlertEvent[]>(() => parseAlertEvents(window.localStorage.getItem('dashboard-alert-events-v1')))
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [selectedJournalDate, setSelectedJournalDate] = useState(shanghaiDateKey)
   const [selectedDay, setSelectedDay] = useState<StockBar | null>(null)
@@ -308,6 +313,7 @@ export default function App() {
   const marketRequestIdRef = useRef(0)
   const marketRefreshHandledRef = useRef(0)
   const intradayRefreshHandledRef = useRef(0)
+  const alertEvaluationRef = useRef('')
 
   const notify = useCallback((message: string) => {
     if (toastTimerRef.current != null) window.clearTimeout(toastTimerRef.current)
@@ -406,6 +412,14 @@ export default function App() {
   }, [autoRefreshEnabled])
 
   useEffect(() => {
+    window.localStorage.setItem('dashboard-alert-rules-v1', JSON.stringify(alertRules))
+  }, [alertRules])
+
+  useEffect(() => {
+    window.localStorage.setItem('dashboard-alert-events-v1', JSON.stringify(alertEvents.slice(0, 100)))
+  }, [alertEvents])
+
+  useEffect(() => {
     const updateSession = () => setAutoRefreshSession(marketSessionState(new Date(), instrument.market))
     updateSession()
     const timer = window.setInterval(() => {
@@ -433,6 +447,24 @@ export default function App() {
     setHoverBar(null)
     setQuote(null)
   }, [activeSymbol])
+
+  useEffect(() => {
+    if (marketState !== 'ready' || !bars.length) return
+    const relevantRules = alertRules.filter((rule) => rule.symbol === instrument.symbol)
+    if (!relevantRules.length) return
+    const signature = JSON.stringify([instrument.symbol, marketMeta.fetchedAt, latestPrice, lastBar.date, relevantRules])
+    if (signature === alertEvaluationRef.current) return
+    alertEvaluationRef.current = signature
+    const result = evaluateAlerts(relevantRules, bars, latestPrice)
+    if (result.changed) {
+      const byId = new Map(result.rules.map((rule) => [rule.id, rule]))
+      setAlertRules((current) => current.map((rule) => byId.get(rule.id) ?? rule))
+    }
+    if (result.events.length) {
+      setAlertEvents((current) => [...result.events, ...current].slice(0, 100))
+      notify(`条件提醒：${result.events[0].message}`)
+    }
+  }, [alertRules, bars, instrument.symbol, lastBar.date, latestPrice, marketMeta.fetchedAt, marketState, notify])
 
   useEffect(() => {
     if (instrument.market !== 'HK' || (distributionMode !== 'chips' && lastDistributionMode !== 'chips')) return
@@ -916,6 +948,7 @@ export default function App() {
           <button className={`nav-item${backtestOpen ? '' : ' is-active'}`} onClick={() => setBacktestOpen(false)}>图表</button>
           <button className="nav-item" onClick={() => { setJournalOpen(true); notify('研究日志已打开，可按日期查看预测与revision') }}>复盘</button>
           <button className={`nav-item${backtestOpen ? ' is-active' : ''}`} onClick={() => setBacktestOpen(true)}>回测</button>
+          <button className={`nav-item${alertOpen ? ' is-active' : ''}`} onClick={() => setAlertOpen(true)}>提醒{alertRules.filter((rule) => rule.enabled).length ? ` ${alertRules.filter((rule) => rule.enabled).length}` : ''}</button>
           <button className="nav-item" onClick={() => notify(`${displayName} · ${marketMeta.source}${marketMeta.cached ? ' · 缓存命中' : ''}`)}>数据</button>
         </nav>
 
@@ -1341,6 +1374,18 @@ export default function App() {
         name={displayName}
         market={instrument.market}
         onClose={() => setBacktestOpen(false)}
+        onMessage={notify}
+      />}
+
+      {alertOpen && <AlertPanel
+        symbol={instrument.symbol}
+        name={displayName}
+        price={latestPrice}
+        rules={alertRules}
+        events={alertEvents}
+        onRulesChange={setAlertRules}
+        onClearEvents={() => setAlertEvents((current) => current.filter((event) => event.symbol !== instrument.symbol))}
+        onClose={() => setAlertOpen(false)}
         onMessage={notify}
       />}
 
