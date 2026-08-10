@@ -111,6 +111,32 @@ export type BacktestResult = {
   warnings: string[]
 }
 
+export type PaperPortfolio = {
+  initial_cash: number
+  cash: number
+  position_cost: number
+  realized_pnl: number
+  positions: Array<{
+    symbol: string; name: string; market: 'CN' | 'HK'; quantity: number; cost_value: number; average_cost: number;
+  }>
+  trades: Array<{
+    id: string; symbol: string; name: string; market: 'CN' | 'HK'; side: 'buy' | 'sell'; price: number;
+    quantity: number; fees: number; traded_at: string; note: string; journal_record_id: string | null;
+    gross_amount: number; realized_pnl: number | null; cash_after: number;
+  }>
+}
+
+export type PaperTradeInput = {
+  symbol: string
+  name: string
+  market: 'CN' | 'HK'
+  side: 'buy' | 'sell'
+  price: number
+  quantity: number
+  note?: string
+  journal_record_id?: string
+}
+
 export type JournalRevision = {
   id: string
   record_id: string
@@ -202,7 +228,16 @@ async function requestJson<T>(path: string, signal?: AbortSignal, init?: Request
     headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...init?.headers },
     signal,
   })
-  if (!response.ok) throw new Error(`API ${response.status}: ${path}`)
+  if (!response.ok) {
+    let detail = ''
+    try {
+      const payload = await response.json() as { detail?: unknown }
+      if (typeof payload.detail === 'string') detail = payload.detail
+    } catch {
+      // Preserve the status fallback when the server does not return JSON.
+    }
+    throw new Error(detail || `API ${response.status}: ${path}`)
+  }
   return response.json() as Promise<T>
 }
 
@@ -249,6 +284,18 @@ export function getMarketProviders(signal?: AbortSignal) {
 
 export function runBacktest(payload: BacktestRequest, signal?: AbortSignal) {
   return requestJson<BacktestResult>('/api/backtests/run', signal, { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export function getPaperPortfolio(signal?: AbortSignal) {
+  return requestJson<PaperPortfolio>('/api/portfolio', signal)
+}
+
+export function createPaperTrade(payload: PaperTradeInput, signal?: AbortSignal) {
+  return requestJson<PaperPortfolio>('/api/portfolio/trades', signal, { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export function deletePaperTrade(tradeId: string, signal?: AbortSignal) {
+  return requestJson<PaperPortfolio>(`/api/portfolio/trades/${encodeURIComponent(tradeId)}`, signal, { method: 'DELETE' })
 }
 
 export function listJournalRecords(options: { dateKey?: string; symbol?: string; includeDeleted?: boolean } = {}, signal?: AbortSignal) {

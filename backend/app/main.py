@@ -17,16 +17,19 @@ from .market_data.symbols import SymbolError
 from .market_data.base import ProviderError
 from .schemas import DemoInstrument, DemoSnapshotResponse, HealthResponse
 from .journal import ImportProjectInput, JournalCreateInput, JournalRepository, JournalRevisionInput
+from .portfolio import PaperPortfolioRepository, PaperTradeInput
 
 
 market_data = MarketDataService(settings.data_dir / "cache" / "market")
 journal = JournalRepository(settings.data_dir)
+portfolio = PaperPortfolioRepository(settings.data_dir)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     journal.initialize()
+    portfolio.initialize()
     yield
 
 
@@ -118,6 +121,29 @@ async def execute_backtest(payload: BacktestRequest) -> BacktestResult:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except (ProviderError, httpx.HTTPError, ValueError) as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@app.get("/api/portfolio", tags=["paper-portfolio"])
+async def paper_portfolio() -> dict:
+    return portfolio.snapshot()
+
+
+@app.post("/api/portfolio/trades", tags=["paper-portfolio"])
+async def create_paper_trade(payload: PaperTradeInput) -> dict:
+    try:
+        return portfolio.create_trade(payload)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@app.delete("/api/portfolio/trades/{trade_id}", tags=["paper-portfolio"])
+async def delete_paper_trade(trade_id: str) -> dict:
+    try:
+        return portfolio.delete_trade(trade_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="Paper trade not found") from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
 
 
 @app.get("/api/journal/records", tags=["journal"])

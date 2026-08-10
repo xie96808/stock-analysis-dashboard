@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { getMarketBars } from './client'
+import { createPaperTrade, getMarketBars } from './client'
 
 const response = {
   instrument: {
@@ -51,5 +51,16 @@ describe('market API client', () => {
     expect(parsed.searchParams.get('refresh')).toBe('true')
     expect(parsed.searchParams.get('trading_date')).toBe('2026-08-10')
     expect(parsed.searchParams.get('limit')).toBe('900')
+  })
+
+  it('surfaces the backend validation detail for a rejected paper trade', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: async () => ({ detail: '模拟账户可用资金不足' }),
+    }))
+    await expect(createPaperTrade({
+      symbol: '001280', name: '样例股票', market: 'CN', side: 'buy', price: 1000, quantity: 1000,
+    })).rejects.toThrow('模拟账户可用资金不足')
   })
 })

@@ -2689,6 +2689,60 @@ button {
 .watchlist-empty strong { color: var(--text); font-size: 16px; }
 .watchlist-panel > footer { padding: 13px 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
 
+.portfolio-backdrop { position: fixed; inset: 0; z-index: 86; display: grid; place-items: center; padding: 28px; background: rgba(20, 25, 34, 0.34); backdrop-filter: blur(4px); }
+.portfolio-dialog { width: min(1120px, 96vw); height: min(790px, 92vh); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 14px; background: #fff; box-shadow: 0 24px 70px rgba(25, 31, 42, 0.24); }
+.portfolio-dialog > header { min-height: 88px; display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--line); }
+.portfolio-dialog h2 { margin: 2px 0; font-size: 23px; }
+.portfolio-dialog header p { margin: 0; color: var(--muted); font-size: 12px; }
+.portfolio-dialog header > button { width: 36px; height: 36px; border-radius: 8px; font-size: 24px; }
+.portfolio-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: #f8f9fb; }
+.portfolio-summary > div { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.portfolio-summary span, .portfolio-summary small { color: var(--muted); font-size: 11px; }
+.portfolio-summary strong { font-size: 17px; }
+.portfolio-body { min-height: 0; flex: 1; display: grid; grid-template-columns: 290px 1fr; }
+.paper-order { display: flex; flex-direction: column; gap: 12px; padding: 18px; border-right: 1px solid var(--line); background: #fafbfc; }
+.paper-order-symbol { display: grid; gap: 3px; }
+.paper-order-symbol > span { width: max-content; padding: 2px 6px; border-radius: 4px; background: var(--blue-soft); color: var(--blue); font-size: 10px; }
+.paper-order-symbol strong { font-size: 18px; }
+.paper-order-symbol small, .paper-order > small { color: var(--muted); line-height: 1.5; }
+.paper-side { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.paper-side button { height: 37px; border: 1px solid var(--line-strong); border-radius: 7px; background: #fff; }
+.paper-side button.is-buy { border-color: #dc6979; background: #fff2f4; color: #c94358; font-weight: 700; }
+.paper-side button.is-sell { border-color: #55ad92; background: #effaf6; color: #228264; font-weight: 700; }
+.paper-order label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; }
+.paper-order input, .paper-order textarea { width: 100%; border: 1px solid var(--line-strong); border-radius: 7px; padding: 9px; background: #fff; color: var(--text); resize: vertical; }
+.paper-order input { height: 38px; }
+.paper-position-hint { min-height: 56px; display: grid; align-content: center; gap: 4px; padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: #fff; color: var(--muted); font-size: 11px; }
+.paper-position-hint strong { color: var(--text); }
+.paper-submit { height: 42px; border-radius: 8px; color: #fff; font-weight: 750; }
+.paper-submit.is-buy { background: #cf4d61; }
+.paper-submit.is-sell { background: #238a6b; }
+.paper-submit:disabled { opacity: .58; }
+.portfolio-ledger { min-width: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 16px; padding: 20px; overflow: hidden; }
+.portfolio-ledger > section { min-height: 0; display: flex; flex-direction: column; }
+.portfolio-section-heading { display: flex; justify-content: space-between; margin-bottom: 9px; }
+.portfolio-section-heading span { color: var(--muted); font-size: 12px; }
+.paper-positions { display: grid; gap: 7px; }
+.paper-positions article { display: grid; grid-template-columns: minmax(150px, 1.4fr) repeat(3, 1fr); gap: 12px; padding: 11px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfd; }
+.paper-positions article > div { display: grid; gap: 3px; }
+.paper-positions article span { color: var(--muted); font-size: 11px; }
+.paper-history { overflow: hidden; }
+.paper-trades { min-height: 0; display: grid; align-content: start; gap: 7px; overflow: auto; }
+.paper-trades article { display: flex; align-items: center; gap: 10px; padding: 10px; border-bottom: 1px solid var(--line); }
+.paper-trade-side { width: 28px; height: 28px; display: grid; place-items: center; border-radius: 6px; font-weight: 750; }
+.paper-trade-side.is-buy { background: #fff0f2; color: #cc4358; }
+.paper-trade-side.is-sell { background: #edf9f5; color: #238569; }
+.paper-trades article > div { min-width: 0; flex: 1; display: grid; gap: 3px; }
+.paper-trades article span { color: var(--muted); font-size: 11px; }
+.paper-trades article button { color: var(--muted); font-size: 11px; }
+.portfolio-empty { min-height: 90px; display: grid; place-content: center; color: var(--muted); font-size: 12px; }
+
+@media (max-width: 850px) {
+  .portfolio-backdrop { padding: 10px; }
+  .portfolio-summary { grid-template-columns: repeat(2, 1fr); }
+  .portfolio-body { grid-template-columns: 240px 1fr; }
+}
+
 /* P1 type system: the large preset is intentionally the product default. */
 .app-shell[data-font-scale="standard"] {
   --font-adjust: 0px;

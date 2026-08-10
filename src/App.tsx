@@ -31,6 +31,7 @@ import {
 import { BacktestPanel } from './components/BacktestPanel'
 import { AlertPanel } from './components/AlertPanel'
 import { WatchlistPanel } from './components/WatchlistPanel'
+import { PortfolioPanel } from './components/PortfolioPanel'
 import { Icon } from './components/Icon'
 import { IntradayView } from './components/IntradayView'
 import { JournalCalendar } from './components/JournalCalendar'
@@ -266,6 +267,7 @@ export default function App() {
   const [alertEvents, setAlertEvents] = useState<AlertEvent[]>(() => parseAlertEvents(window.localStorage.getItem('dashboard-alert-events-v1')))
   const [watchlistOpen, setWatchlistOpen] = useState(false)
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>(() => parseWatchlist(window.localStorage.getItem('dashboard-watchlist-v1')))
+  const [portfolioOpen, setPortfolioOpen] = useState(false)
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [selectedJournalDate, setSelectedJournalDate] = useState(shanghaiDateKey)
   const [selectedDay, setSelectedDay] = useState<StockBar | null>(null)
@@ -982,6 +984,7 @@ export default function App() {
           <button className={`nav-item${backtestOpen ? ' is-active' : ''}`} onClick={() => setBacktestOpen(true)}>回测</button>
           <button className={`nav-item${alertOpen ? ' is-active' : ''}`} onClick={() => setAlertOpen(true)}>提醒{alertRules.filter((rule) => rule.enabled).length ? ` ${alertRules.filter((rule) => rule.enabled).length}` : ''}</button>
           <button className={`nav-item${watchlistOpen ? ' is-active' : ''}`} onClick={() => setWatchlistOpen(true)}>自选 {watchlist.length}</button>
+          <button className={`nav-item${portfolioOpen ? ' is-active' : ''}`} onClick={() => setPortfolioOpen(true)}>模拟</button>
           <button className="nav-item" onClick={() => notify(`${displayName} · ${marketMeta.source}${marketMeta.cached ? ' · 缓存命中' : ''}`)}>数据</button>
         </nav>
 
@@ -1428,6 +1431,15 @@ export default function App() {
         onChange={setWatchlist}
         onSelect={selectWatchlistItem}
         onClose={() => setWatchlistOpen(false)}
+        onMessage={notify}
+      />}
+
+      {portfolioOpen && <PortfolioPanel
+        symbol={instrument.symbol}
+        name={displayName}
+        market={instrument.market}
+        currentPrice={latestPrice}
+        onClose={() => setPortfolioOpen(false)}
         onMessage={notify}
       />}
 
