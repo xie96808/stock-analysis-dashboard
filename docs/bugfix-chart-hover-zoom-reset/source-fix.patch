@@ -1,0 +1,38 @@
+diff --git a/src/App.tsx b/src/App.tsx
+index 0c41e58..79b2a8c 100644
+--- a/src/App.tsx
++++ b/src/App.tsx
+@@ -290,0 +291,3 @@ export default function App() {
++  const handleSelectBar = useCallback((bar: StockBar) => {
++    if (timeframe === '日K') setSelectedDay(bar)
++  }, [timeframe])
+@@ -884,3 +887 @@ export default function App() {
+-              onSelectBar={(bar) => {
+-                if (timeframe === '日K') setSelectedDay(bar)
+-              }}
++              onSelectBar={handleSelectBar}
+diff --git a/src/components/ChartWorkbench.tsx b/src/components/ChartWorkbench.tsx
+index 5190826..9e3ed3c 100644
+--- a/src/components/ChartWorkbench.tsx
++++ b/src/components/ChartWorkbench.tsx
+@@ -149,0 +150,8 @@ export function ChartWorkbench({
++  // Keep UI callbacks outside the chart-construction effect. Hovering updates
++  // the quote strip in App, which re-renders this component; rebuilding the
++  // chart on that render resets a user's wheel zoom and produces a visible
++  // full-canvas flash.
++  const onHoverBarRef = useRef(onHoverBar)
++  const onSelectBarRef = useRef(onSelectBar)
++  onHoverBarRef.current = onHoverBar
++  onSelectBarRef.current = onSelectBar
+@@ -388 +396 @@ export function ChartWorkbench({
+-        onHoverBar(null)
++        onHoverBarRef.current(null)
+@@ -391 +399 @@ export function ChartWorkbench({
+-      onHoverBar(byTime.get(timeKey(param.time)) ?? null)
++      onHoverBarRef.current(byTime.get(timeKey(param.time)) ?? null)
+@@ -396 +404 @@ export function ChartWorkbench({
+-      if (bar) onSelectBar(bar)
++      if (bar) onSelectBarRef.current(bar)
+@@ -420 +428 @@ export function ChartWorkbench({
+-  }, [anchoredRange, bars, byTime, candleTheme, cleanMode, fontScale, indicators, instrumentLabel, isMinute, latestBar, logPrice, macd, onHoverBar, onSelectBar, timeframe])
++  }, [anchoredRange, bars, byTime, candleTheme, cleanMode, fontScale, indicators, isMinute, latestBar, logPrice, macd, timeframe])
