@@ -67,6 +67,7 @@ type Props = {
   onSelectBar: (bar: StockBar) => void
   onSelectChipDate: (bar: StockBar) => void
   onResetChipDate: () => void
+  onFinishDrawing: () => void
 }
 
 type OverlayGeometry = {
@@ -167,6 +168,7 @@ export function ChartWorkbench({
   onSelectBar,
   onSelectChipDate,
   onResetChipDate,
+  onFinishDrawing,
 }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
@@ -581,6 +583,7 @@ export function ChartWorkbench({
         snapMode={snapMode}
         drawings={drawings}
         onCommit={onCommitDrawings}
+        onFinishCreate={onFinishDrawing}
       />
       {intradayPrompt && supportsIntraday(timeframe, activeTool) && (
         <div

@@ -1015,7 +1015,7 @@ export default function App() {
             </div>
           </div>
           {selectedDay ? (
-            <IntradayView bar={selectedDay} points={intradayPoints} fontScale={fontScale} onClose={closeIntraday} />
+            <IntradayView bar={selectedDay} points={intradayPoints} fontScale={fontScale} />
           ) : (
             <ChartWorkbench
               bars={chartBars}
@@ -1045,6 +1045,10 @@ export default function App() {
               onResetChipDate={() => {
                 setChipAsOfDate(null)
                 notify(`筹码分布已恢复至最新交易日${chipLatestDate}`)
+              }}
+              onFinishDrawing={() => {
+                setActiveTool('选择')
+                notify('画线已创建，可拖动线条或端点微调；点击“完成画线”后锁定')
               }}
             />
           )}

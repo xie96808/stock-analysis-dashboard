@@ -2,8 +2,11 @@ import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } fro
 import type { BusinessDay, IChartApi, ISeriesApi, Time, UTCTimestamp } from 'lightweight-charts'
 import {
   createDrawingId,
+  commitDrawingGesture,
   defaultDrawingStyle,
+  replaceDrawingAnchor,
   toolToDrawingType,
+  wheelAdjustedPrice,
   type Drawing,
   type DrawingAnchor,
 } from '../drawings/model'
@@ -23,13 +26,15 @@ type Props = {
   snapMode: 'off' | 'weak' | 'strong'
   drawings: Drawing[]
   onCommit: (next: Drawing[]) => void
+  onFinishCreate: () => void
 }
 
 type Gesture = {
-  kind: 'create' | 'move'
+  kind: 'create' | 'move' | 'anchor'
   drawing: Drawing
   origin?: DrawingAnchor
   initial?: Drawing
+  anchorIndex?: number
 }
 
 function timeToTimestampMs(time: Time) {
@@ -76,6 +81,7 @@ export function DrawingLayer({
   snapMode,
   drawings,
   onCommit,
+  onFinishCreate,
 }: Props) {
   const svgRef = useRef<SVGSVGElement>(null)
   const [gesture, setGesture] = useState<Gesture | null>(null)
@@ -136,6 +142,8 @@ export function DrawingLayer({
     const target = event.target as SVGElement
     const object = target.closest<SVGElement>('[data-drawing-id]')
     const objectId = object?.dataset.drawingId ?? null
+    const anchorHandle = target.closest<SVGElement>('[data-anchor-index]')
+    const anchorIndex = anchorHandle?.dataset.anchorIndex == null ? null : Number(anchorHandle.dataset.anchorIndex)
 
     if (activeTool === '橡皮擦' && objectId) {
       onCommit(drawings.filter((drawing) => drawing.id !== objectId))
@@ -150,7 +158,9 @@ export function DrawingLayer({
       const current = drawings.find((drawing) => drawing.id === objectId)
       const origin = anchorFromEvent(event)
       if (!current || current.locked || !origin) return
-      setGesture({ kind: 'move', drawing: current, origin, initial: current })
+      setGesture(anchorIndex != null && Number.isInteger(anchorIndex)
+        ? { kind: 'anchor', drawing: current, initial: current, anchorIndex }
+        : { kind: 'move', drawing: current, origin, initial: current })
       svgRef.current?.setPointerCapture(event.pointerId)
       event.preventDefault()
       return
@@ -181,6 +191,13 @@ export function DrawingLayer({
     if (!gesture) return
     const anchor = anchorFromEvent(event)
     if (!anchor) return
+    if (gesture.kind === 'anchor' && gesture.initial && gesture.anchorIndex != null) {
+      setGesture({
+        ...gesture,
+        drawing: replaceDrawingAnchor(gesture.initial, gesture.anchorIndex, anchor),
+      })
+      return
+    }
     if (gesture.kind === 'move' && gesture.origin && gesture.initial) {
       setGesture({
         ...gesture,
@@ -206,12 +223,11 @@ export function DrawingLayer({
   const finish = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (!gesture) return
     const draft = gesture.drawing
-    const next = gesture.kind === 'move'
-      ? drawings.map((drawing) => drawing.id === draft.id ? draft : drawing)
-      : [...drawings, draft]
+    const next = commitDrawingGesture(drawings, draft, gesture.kind === 'create')
     onCommit(next)
     setSelectedId(draft.id)
     setGesture(null)
+    if (gesture.kind === 'create') onFinishCreate()
     if (svgRef.current?.hasPointerCapture(event.pointerId)) svgRef.current.releasePointerCapture(event.pointerId)
   }
 
@@ -252,6 +268,7 @@ export function DrawingLayer({
           if (!first) return null
           if (drawing.type === 'horizontal') {
             return <g key={drawing.id} data-drawing-id={drawing.id} className={className}>
+              <line className="drawing-hit-target" x1={0} y1={first.y} x2={width} y2={first.y} />
               <line x1={0} y1={first.y} x2={width} y2={first.y} {...common} />
               <text x={Math.max(8, width - 84)} y={first.y - 6} fill={drawing.style.color}>{drawing.anchors[0].price.toFixed(2)}</text>
             </g>
@@ -284,7 +301,27 @@ export function DrawingLayer({
               <line x1={second.x} y1={second.y} x2={second.x + offset.x} y2={second.y + offset.y} {...common} strokeOpacity={0.35} />
             </g>
           }
-          return <line key={drawing.id} data-drawing-id={drawing.id} className={className} x1={first.x} y1={first.y} x2={end.x} y2={end.y} {...common} />
+          return <g key={drawing.id} data-drawing-id={drawing.id} className={className}>
+            <line className="drawing-hit-target" x1={first.x} y1={first.y} x2={end.x} y2={end.y} />
+            <line x1={first.x} y1={first.y} x2={end.x} y2={end.y} {...common} />
+          </g>
+        })}
+        {rendered.flatMap((drawing) => {
+          if (drawing.id !== selectedId || drawing.locked || drawing.type === 'freehand' || drawing.type === 'highlighter' || drawing.type === 'text') return []
+          return drawing.anchors.flatMap((anchor, anchorIndex) => {
+            const value = point(anchor)
+            if (!value) return []
+            const x = drawing.type === 'horizontal' ? Math.max(18, Math.min(width - 112, value.x)) : value.x
+            return [<circle
+              key={`${drawing.id}-anchor-${anchorIndex}`}
+              className="drawing-anchor-handle"
+              data-drawing-id={drawing.id}
+              data-anchor-index={anchorIndex}
+              cx={x}
+              cy={value.y}
+              r={6}
+            />]
+          })
         })}
       </svg>
 
@@ -295,11 +332,35 @@ export function DrawingLayer({
             const timestampMs = new Date(`${event.target.value}T00:00:00+08:00`).getTime()
             patchSelected({ anchors: [{ ...selected.anchors[0], timestampMs }, ...selected.anchors.slice(1)] })
           }} /></label>
-          <label>价格<input type="number" step="0.01" value={selected.anchors[0].price.toFixed(2)} onChange={(event) => patchSelected({ anchors: [{ ...selected.anchors[0], price: Number(event.target.value) }, ...selected.anchors.slice(1)] })} /></label>
+          <label>价格<input
+            aria-label="画线价格"
+            type="number"
+            step="0.01"
+            min="0.01"
+            title="滚轮微调 ±0.01；按住 Shift 为 ±0.10"
+            value={selected.anchors[0].price.toFixed(2)}
+            onWheel={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              const price = wheelAdjustedPrice(selected.anchors[0].price, event.deltaY, event.shiftKey ? 10 : 1)
+              patchSelected({ anchors: [{ ...selected.anchors[0], price }, ...selected.anchors.slice(1)] })
+            }}
+            onChange={(event) => {
+              const price = Number(event.target.value)
+              if (Number.isFinite(price) && price > 0) patchSelected({ anchors: [{ ...selected.anchors[0], price }, ...selected.anchors.slice(1)] })
+            }}
+          /></label>
           {selected.type === 'text' && <label>文字<input value={selected.text ?? ''} onChange={(event) => patchSelected({ text: event.target.value })} /></label>}
           <label>颜色<input aria-label="画线颜色" type="color" value={selected.style.color} onChange={(event) => patchSelected({ style: { ...selected.style, color: event.target.value } })} /></label>
           <label>周期<select value={selected.timeframeVisibility === 'all' ? 'all' : 'current'} onChange={(event) => patchSelected({ timeframeVisibility: event.target.value === 'all' ? 'all' : [timeframe] })}><option value="all">全部周期</option><option value="current">仅{timeframe}</option></select></label>
-          <button onClick={() => patchSelected({ locked: !selected.locked })}>{selected.locked ? '解锁' : '锁定'}</button>
+          {selected.locked ? (
+            <button onClick={() => patchSelected({ locked: false })}>解锁编辑</button>
+          ) : (
+            <button className="is-primary" title="完成并锁定当前画线" onClick={() => {
+              patchSelected({ locked: true })
+              setSelectedId(null)
+            }}>完成画线</button>
+          )}
           <button onClick={() => {
             const duplicate = translateDrawing({ ...selected, id: createDrawingId(), locked: false }, 86_400_000, selected.anchors[0].price * 0.01)
             onCommit([...drawings, duplicate]); setSelectedId(duplicate.id)

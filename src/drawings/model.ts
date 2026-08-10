@@ -60,3 +60,23 @@ export function toolToDrawingType(tool: string): DrawingType | null {
 export function createDrawingId() {
   return `drawing-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
+
+export function replaceDrawingAnchor(drawing: Drawing, index: number, anchor: DrawingAnchor): Drawing {
+  if (index < 0 || index >= drawing.anchors.length) return drawing
+  return {
+    ...drawing,
+    anchors: drawing.anchors.map((current, currentIndex) => currentIndex === index ? anchor : current),
+  }
+}
+
+export function wheelAdjustedPrice(price: number, deltaY: number, multiplier = 1): number {
+  const direction = deltaY < 0 ? 1 : deltaY > 0 ? -1 : 0
+  if (!direction) return price
+  return Math.max(0.01, Number((price + direction * 0.01 * multiplier).toFixed(4)))
+}
+
+export function commitDrawingGesture(drawings: Drawing[], draft: Drawing, isCreate: boolean): Drawing[] {
+  return isCreate
+    ? [...drawings, draft]
+    : drawings.map((drawing) => drawing.id === draft.id ? draft : drawing)
+}
