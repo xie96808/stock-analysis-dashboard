@@ -1,13 +1,40 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { getApiHealth, getDemoSnapshot, type ApiHealth } from './api/client'
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import {
+  getApiHealth,
+  getMarketBars,
+  getMarketQuote,
+  type ApiHealth,
+  type MarketAdjustment,
+  type MarketBarsResponse,
+  type MarketInstrument,
+  type MarketQuoteResponse,
+  type MarketTimeframe,
+} from './api/client'
 import { ChartWorkbench } from './components/ChartWorkbench'
 import { Icon } from './components/Icon'
 import { IntradayView } from './components/IntradayView'
 import { JournalCalendar } from './components/JournalCalendar'
-import { fixtureBars, type StockBar } from './data/fixture'
+import { fixtureBars, type IntradayPoint, type StockBar } from './data/fixture'
 import './styles.css'
 
 const timeframes = ['1分', '5分', '15分', '30分', '60分', '日K', '周K', '月K']
+
+const timeframeValues: Record<string, MarketTimeframe> = {
+  '1分': '1m',
+  '5分': '5m',
+  '15分': '15m',
+  '30分': '30m',
+  '60分': '60m',
+  日K: '1d',
+  周K: '1w',
+  月K: '1M',
+}
+
+const adjustmentLabels: Record<MarketAdjustment, string> = {
+  qfq: '前复权',
+  none: '不复权',
+  hfq: '后复权',
+}
 
 type FontScale = 'standard' | 'large' | 'xlarge'
 
@@ -67,11 +94,58 @@ const initialRecords: RecordItem[] = [
 ]
 
 function compactVolume(volume: number) {
-  return `${(volume / 1_000_000).toFixed(2)}M`
+  if (volume >= 100_000_000) return `${(volume / 100_000_000).toFixed(2)}亿`
+  if (volume >= 10_000) return `${(volume / 10_000).toFixed(2)}万`
+  return String(Math.round(volume))
+}
+
+function toStockBars(response: MarketBarsResponse): StockBar[] {
+  return response.bars.map((bar) => ({
+    date: bar.time,
+    open: bar.open,
+    high: bar.high,
+    low: bar.low,
+    close: bar.close,
+    volume: bar.volume,
+  }))
+}
+
+function toIntradayPoints(response: MarketBarsResponse): IntradayPoint[] {
+  let cumulativeValue = 0
+  let cumulativeVolume = 0
+  return response.bars.map((bar) => {
+    const timestamp = Math.floor(new Date(`${bar.time.replace(' ', 'T')}:00+08:00`).getTime() / 1000)
+    cumulativeValue += bar.close * bar.volume
+    cumulativeVolume += bar.volume
+    return {
+      timestamp,
+      price: bar.close,
+      average: cumulativeVolume > 0 ? cumulativeValue / cumulativeVolume : bar.close,
+      volume: bar.volume,
+    }
+  })
+}
+
+const fallbackInstrument: MarketInstrument = {
+  symbol: '001280',
+  key: 'SZSE:001280',
+  market: 'CN',
+  exchange: 'SZSE',
+  provider_symbol: 'sz001280',
+  currency: 'CNY',
+  name: '中国铀业',
 }
 
 export default function App() {
-  const lastBar = fixtureBars.at(-1)!
+  const [bars, setBars] = useState<StockBar[]>(fixtureBars)
+  const [instrument, setInstrument] = useState<MarketInstrument>(fallbackInstrument)
+  const [quote, setQuote] = useState<MarketQuoteResponse | null>(null)
+  const [symbolInput, setSymbolInput] = useState('001280')
+  const [activeSymbol, setActiveSymbol] = useState('001280')
+  const [adjustment, setAdjustment] = useState<MarketAdjustment>('qfq')
+  const [marketState, setMarketState] = useState<'loading' | 'ready' | 'fallback' | 'error'>('loading')
+  const [marketMeta, setMarketMeta] = useState({ source: 'deterministic-fixture', cached: false, delayed: true })
+  const lastBar = bars.at(-1) ?? fixtureBars.at(-1)!
   const [hoverBar, setHoverBar] = useState<StockBar | null>(null)
   const [logPrice, setLogPrice] = useState(true)
   const [profileVisible, setProfileVisible] = useState(true)
@@ -80,6 +154,8 @@ export default function App() {
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [selectedJournalDate, setSelectedJournalDate] = useState('2026-08-09')
   const [selectedDay, setSelectedDay] = useState<StockBar | null>(null)
+  const [intradayPoints, setIntradayPoints] = useState<IntradayPoint[]>([])
+  const [intradayLoading, setIntradayLoading] = useState(false)
   const [timeframe, setTimeframe] = useState('日K')
   const [activeTool, setActiveTool] = useState('选择')
   const [workspace, setWorkspace] = useState('主分析')
@@ -91,9 +167,16 @@ export default function App() {
   })
   const [apiHealth, setApiHealth] = useState<ApiHealth | null>(null)
   const [apiState, setApiState] = useState<'connecting' | 'ready' | 'offline'>('connecting')
-  const [toast, setToast] = useState('P1 工程骨架 · 2026-08-07 样例收盘')
+  const [toast, setToast] = useState('P2 行情接入 · 正在读取真实收盘数据')
 
   const displayBar = hoverBar ?? lastBar
+  const previousBar = bars.length > 1 ? bars[bars.length - 2] : null
+  const referenceClose = quote?.previous_close ?? previousBar?.close ?? lastBar.close
+  const latestPrice = quote?.last ?? lastBar.close
+  const priceChange = latestPrice - referenceClose
+  const priceChangePercent = referenceClose ? priceChange / referenceClose * 100 : 0
+  const displayName = instrument.name || instrument.symbol
+  const adjustmentLabel = adjustmentLabels[adjustment]
   const handleHoverBar = useCallback((bar: StockBar | null) => setHoverBar(bar), [])
 
   const displayDate = useMemo(() => {
@@ -117,9 +200,8 @@ export default function App() {
 
   useEffect(() => {
     const controller = new AbortController()
-    Promise.all([getApiHealth(controller.signal), getDemoSnapshot(controller.signal)])
-      .then(([health, snapshot]) => {
-        if (snapshot.instrument.symbol !== '001280') throw new Error('Unexpected demo fixture')
+    getApiHealth(controller.signal)
+      .then((health) => {
         setApiHealth(health)
         setApiState('ready')
       })
@@ -130,9 +212,87 @@ export default function App() {
     return () => controller.abort()
   }, [])
 
+  useEffect(() => {
+    const controller = new AbortController()
+    setMarketState('loading')
+    setSelectedDay(null)
+    setIntradayPoints([])
+    const selectedTimeframe = timeframeValues[timeframe]
+    Promise.all([
+      getMarketBars(activeSymbol, {
+        timeframe: selectedTimeframe,
+        adjustment,
+        limit: selectedTimeframe.endsWith('m') ? 640 : 520,
+      }, controller.signal),
+      getMarketQuote(activeSymbol, controller.signal).catch(() => null),
+    ])
+      .then(([response, currentQuote]) => {
+        const nextBars = toStockBars(response)
+        if (!nextBars.length) throw new Error('行情源未返回K线')
+        const savedAdjustment = window.localStorage.getItem(`market-adjustment:${response.instrument.key}`)
+        if (
+          (savedAdjustment === 'qfq' || savedAdjustment === 'none' || savedAdjustment === 'hfq')
+          && savedAdjustment !== adjustment
+        ) {
+          setInstrument(response.instrument)
+          setAdjustment(savedAdjustment)
+          return
+        }
+        setBars(nextBars)
+        setInstrument(response.instrument)
+        setQuote(currentQuote)
+        setMarketMeta({ source: response.source, cached: response.cached, delayed: response.delayed })
+        setMarketState('ready')
+      })
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        if (activeSymbol === '001280') {
+          setBars(fixtureBars)
+          setInstrument(fallbackInstrument)
+          setMarketMeta({ source: 'deterministic-fixture', cached: false, delayed: true })
+          setMarketState('fallback')
+          notify('行情服务暂未连接，已保留可交互样例数据')
+        } else {
+          setMarketState('error')
+          notify(error instanceof Error ? `代码或行情读取失败：${error.message}` : '代码或行情读取失败')
+        }
+      })
+    return () => controller.abort()
+  }, [activeSymbol, adjustment, timeframe])
+
+  useEffect(() => {
+    if (!selectedDay) return
+    const controller = new AbortController()
+    setIntradayLoading(true)
+    getMarketBars(activeSymbol, {
+      timeframe: '5m',
+      adjustment: 'none',
+      limit: 640,
+      tradingDate: selectedDay.date.slice(0, 10),
+    }, controller.signal)
+      .then((response) => setIntradayPoints(toIntradayPoints(response)))
+      .catch((error: unknown) => {
+        if (error instanceof DOMException && error.name === 'AbortError') return
+        setIntradayPoints([])
+        notify('该日期的5分钟行情不可用，分时面板使用本地拟合预览')
+      })
+      .finally(() => setIntradayLoading(false))
+    return () => controller.abort()
+  }, [activeSymbol, selectedDay])
+
   const notify = (message: string) => {
     setToast(message)
     window.setTimeout(() => setToast(''), 2600)
+  }
+
+  const submitSymbol = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+    const value = symbolInput.trim()
+    if (!value) {
+      notify('请输入A股或港股代码')
+      return
+    }
+    setActiveSymbol(value)
   }
 
   const addRecord = () => {
@@ -163,19 +323,26 @@ export default function App() {
         <div className="brand" aria-label="研判看板">
           <span className="brand-mark">研</span>
           <span className="brand-name">研判</span>
-          <span className="brand-phase">P1</span>
+          <span className="brand-phase">P2</span>
         </div>
 
-        <div className="symbol-search">
+        <form className="symbol-search" onSubmit={submitSymbol}>
           <Icon name="search" />
-          <input defaultValue="001280" aria-label="股票代码" />
-          <span className="search-market">SZ</span>
-        </div>
+          <input
+            value={symbolInput}
+            onChange={(event) => setSymbolInput(event.target.value)}
+            aria-label="股票代码"
+            placeholder="A股 / 港股代码"
+          />
+          <button className="search-market" type="submit" title="加载代码">
+            {marketState === 'loading' ? '…' : instrument.market === 'HK' ? 'HK' : instrument.exchange === 'SSE' ? 'SH' : instrument.exchange === 'BSE' ? 'BJ' : 'SZ'}
+          </button>
+        </form>
 
         <nav className="header-nav" aria-label="工作区导航">
           <button className="nav-item is-active">图表</button>
           <button className="nav-item" onClick={() => notify('复盘工作流将在 P6 接入')}>复盘</button>
-          <button className="nav-item" onClick={() => notify('数据管理将在 P2 行情接入阶段开放')}>数据</button>
+          <button className="nav-item" onClick={() => notify(`${displayName} · ${marketMeta.source}${marketMeta.cached ? ' · 缓存命中' : ''}`)}>数据</button>
         </nav>
 
         <div className="header-actions">
@@ -209,14 +376,14 @@ export default function App() {
         <div className="instrument">
           <div className="instrument-title">
             <span className="favorite">★</span>
-            <strong>中国铀业</strong>
-            <span className="instrument-code">001280</span>
-            <span className="market-tag">SZSE</span>
+            <strong>{displayName}</strong>
+            <span className="instrument-code">{instrument.symbol}</span>
+            <span className="market-tag">{instrument.exchange}</span>
           </div>
           <div className="instrument-price">
-            <strong>{lastBar.close.toFixed(2)}</strong>
-            <span>+0.61</span>
-            <span>+0.94%</span>
+            <strong>{latestPrice.toFixed(2)}</strong>
+            <span className={priceChange >= 0 ? '' : 'is-negative'}>{priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}</span>
+            <span className={priceChangePercent >= 0 ? '' : 'is-negative'}>{priceChangePercent >= 0 ? '+' : ''}{priceChangePercent.toFixed(2)}%</span>
           </div>
         </div>
 
@@ -225,7 +392,7 @@ export default function App() {
           <span><small>高</small><b>{displayBar.high.toFixed(2)}</b></span>
           <span><small>低</small><b>{displayBar.low.toFixed(2)}</b></span>
           <span><small>收</small><b>{displayBar.close.toFixed(2)}</b></span>
-          <span><small>成交量</small><b>{compactVolume(displayBar.volume)}</b></span>
+          <span><small>成交量</small><b>{compactVolume(hoverBar ? displayBar.volume : (quote?.volume ?? displayBar.volume))}</b></span>
           <span className="quote-date"><small>数据日期</small><b>{displayDate}</b></span>
         </div>
 
@@ -242,12 +409,8 @@ export default function App() {
               key={item}
               className={item === timeframe ? 'is-active' : ''}
               onClick={() => {
-                if (item === '日K') {
-                  setTimeframe(item)
-                  notify('当前正在展示日K样例')
-                  return
-                }
-                notify(`${item}为 P2 功能入口；P1 继续展示日K样例`)
+                setTimeframe(item)
+                notify(`正在加载${item}真实行情`)
               }}
             >
               {item}
@@ -256,12 +419,21 @@ export default function App() {
         </div>
         <span className="toolbar-divider" />
         <label className="inline-select">
-          <span>前复权</span>
+          <span>{adjustmentLabel}</span>
           <Icon name="chevron" />
-          <select aria-label="复权方式" defaultValue="前复权" onChange={(event) => notify(`${event.target.value}计算将在 P2 接入；当前样例仍为前复权`)}>
-            <option>前复权</option>
-            <option>不复权</option>
-            <option>后复权</option>
+          <select
+            aria-label="复权方式"
+            value={adjustment}
+            onChange={(event) => {
+              const nextAdjustment = event.target.value as MarketAdjustment
+              window.localStorage.setItem(`market-adjustment:${instrument.key}`, nextAdjustment)
+              setAdjustment(nextAdjustment)
+              notify(`正在加载${adjustmentLabels[nextAdjustment]}行情`)
+            }}
+          >
+            <option value="qfq">前复权</option>
+            <option value="none">不复权</option>
+            <option value="hfq">后复权</option>
           </select>
         </label>
         <button className={`toolbar-toggle${profileVisible ? ' is-active' : ''}`} onClick={() => setProfileVisible((value) => !value)}>
@@ -272,7 +444,9 @@ export default function App() {
         </button>
         <button className="toolbar-action" onClick={() => notify('图表已恢复到建议范围')}>适应画面</button>
         <div className="toolbar-spacer" />
-        <span className="data-status"><i />收盘数据</span>
+        <span className={`data-status is-${marketState}`} title={`数据源：${marketMeta.source}`}>
+          <i />{marketState === 'loading' ? '读取行情' : marketState === 'fallback' ? '样例降级' : marketState === 'error' ? '读取失败' : `${marketMeta.delayed ? '延时' : '实时'}数据${marketMeta.cached ? ' · 缓存' : ''}`}
+        </span>
         <button className="journal-toggle" onClick={() => setJournalOpen((value) => !value)}>
           <Icon name="journal" />
           研究记录
@@ -303,10 +477,10 @@ export default function App() {
         <section className="chart-region">
           <div className="chart-context">
             <div>
-              <strong>中国铀业 · {selectedDay ? `${selectedDay.date} 分时` : timeframe}</strong>
-              {!selectedDay && <span>前复权</span>}
+              <strong>{displayName} · {selectedDay ? `${selectedDay.date.slice(0, 10)} 分时` : timeframe}</strong>
+              {!selectedDay && <span>{adjustmentLabel}</span>}
               {!selectedDay && <span className={logPrice ? 'log-badge is-log' : 'log-badge'}>{logPrice ? 'LOG' : '线性'}</span>}
-              {selectedDay && <span className="intraday-source">由日K进入</span>}
+              {selectedDay && <span className="intraday-source">{intradayLoading ? '正在加载5分钟行情' : intradayPoints.length ? '真实5分钟行情' : '本地拟合预览'}</span>}
             </div>
             <div className="chart-context-actions">
               {selectedDay ? (
@@ -316,15 +490,20 @@ export default function App() {
             </div>
           </div>
           {selectedDay ? (
-            <IntradayView bar={selectedDay} fontScale={fontScale} />
+            <IntradayView bar={selectedDay} points={intradayPoints} fontScale={fontScale} />
           ) : (
             <ChartWorkbench
+              bars={bars}
+              instrumentLabel={displayName}
+              timeframe={timeframe}
               logPrice={logPrice}
               profileVisible={profileVisible && !cleanMode}
               cleanMode={cleanMode}
               fontScale={fontScale}
               onHoverBar={handleHoverBar}
-              onSelectBar={setSelectedDay}
+              onSelectBar={(bar) => {
+                if (timeframe === '日K') setSelectedDay(bar)
+              }}
             />
           )}
         </section>
@@ -380,7 +559,7 @@ export default function App() {
                 <article className="record-item" key={record.id}>
                   <div className={`record-dot ${record.color}`} />
                   <div className="record-copy">
-                    <div className="record-meta"><time>{record.time}</time><span>中国铀业</span><span>v1</span></div>
+                    <div className="record-meta"><time>{record.time}</time><span>{displayName}</span><span>v1</span></div>
                     <h3>{record.title}</h3>
                     <p>{record.body}</p>
                     <div className="record-actions">
@@ -421,7 +600,7 @@ export default function App() {
           <i />{apiState === 'ready' ? `本地API · ${apiHealth?.version}` : apiState === 'connecting' ? '正在连接API' : '样例降级模式'}
         </span>
         <span className="status-spacer" />
-        <span>样例数据 · 非实时</span>
+        <span>{marketState === 'ready' ? `${marketMeta.source} · ${marketMeta.delayed ? '收盘/延时' : '实时'}` : '样例数据 · 非实时'}</span>
         <span>缩放：滚轮 / 触控板</span>
       </footer>
 

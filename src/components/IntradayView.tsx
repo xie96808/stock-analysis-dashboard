@@ -10,10 +10,11 @@ import {
   type Time,
   type UTCTimestamp,
 } from 'lightweight-charts'
-import { createIntradayFixture, type StockBar } from '../data/fixture'
+import { createIntradayFixture, type IntradayPoint, type StockBar } from '../data/fixture'
 
 type Props = {
   bar: StockBar
+  points?: IntradayPoint[]
   fontScale: 'standard' | 'large' | 'xlarge'
 }
 
@@ -27,9 +28,12 @@ function formatShanghaiTime(time: Time) {
   }).format(new Date(time * 1000))
 }
 
-export function IntradayView({ bar, fontScale }: Props) {
+export function IntradayView({ bar, points: suppliedPoints, fontScale }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
-  const points = useMemo(() => createIntradayFixture(bar), [bar])
+  const points = useMemo(
+    () => suppliedPoints?.length ? suppliedPoints : createIntradayFixture(bar),
+    [bar, suppliedPoints],
+  )
 
   useEffect(() => {
     const host = hostRef.current

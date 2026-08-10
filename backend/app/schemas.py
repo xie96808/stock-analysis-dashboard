@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     service: str
-    phase: Literal["P1"] = "P1"
+    phase: Literal["P2"] = "P2"
     version: str
     timestamp: datetime
 
@@ -28,4 +28,4 @@ class DemoInstrument(BaseModel):
 class DemoSnapshotResponse(BaseModel):
     instrument: DemoInstrument
     realtime: bool = False
-    note: str = "P1 deterministic fixture; real A/H market providers enter in P2."
+    note: str = "Deterministic offline fallback; real A/H market data is exposed by the P2 market routes."
