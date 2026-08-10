@@ -30,6 +30,7 @@ import {
 } from './components/ChartWorkbench'
 import { BacktestPanel } from './components/BacktestPanel'
 import { AlertPanel } from './components/AlertPanel'
+import { WatchlistPanel } from './components/WatchlistPanel'
 import { Icon } from './components/Icon'
 import { IntradayView } from './components/IntradayView'
 import { JournalCalendar } from './components/JournalCalendar'
@@ -40,6 +41,7 @@ import { toIntradayPoints, toStockBars } from './market/transform'
 import { marketSessionState } from './market/refreshSchedule'
 import { parseDrawingStore, parseIndicatorConfig, shanghaiDateKey } from './state/preferences'
 import { evaluateAlerts, parseAlertEvents, parseAlertRules, type AlertEvent, type AlertRule } from './alerts/model'
+import { parseWatchlist, upsertWatchlist, type WatchlistItem } from './watchlist/model'
 import './styles.css'
 
 const LazyMarkdown = lazy(() => import('react-markdown'))
@@ -262,6 +264,8 @@ export default function App() {
   const [alertOpen, setAlertOpen] = useState(false)
   const [alertRules, setAlertRules] = useState<AlertRule[]>(() => parseAlertRules(window.localStorage.getItem('dashboard-alert-rules-v1')))
   const [alertEvents, setAlertEvents] = useState<AlertEvent[]>(() => parseAlertEvents(window.localStorage.getItem('dashboard-alert-events-v1')))
+  const [watchlistOpen, setWatchlistOpen] = useState(false)
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>(() => parseWatchlist(window.localStorage.getItem('dashboard-watchlist-v1')))
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [selectedJournalDate, setSelectedJournalDate] = useState(shanghaiDateKey)
   const [selectedDay, setSelectedDay] = useState<StockBar | null>(null)
@@ -418,6 +422,10 @@ export default function App() {
   useEffect(() => {
     window.localStorage.setItem('dashboard-alert-events-v1', JSON.stringify(alertEvents.slice(0, 100)))
   }, [alertEvents])
+
+  useEffect(() => {
+    window.localStorage.setItem('dashboard-watchlist-v1', JSON.stringify(watchlist))
+  }, [watchlist])
 
   useEffect(() => {
     const updateSession = () => setAutoRefreshSession(marketSessionState(new Date(), instrument.market))
@@ -657,6 +665,30 @@ export default function App() {
       return
     }
     setActiveSymbol(value)
+  }
+
+  const addCurrentToWatchlist = () => {
+    const item: WatchlistItem = {
+      key: instrument.key,
+      symbol: instrument.symbol,
+      name: displayName,
+      market: instrument.market,
+      exchange: instrument.exchange,
+      status: 'pending',
+      note: '',
+      addedAt: new Date().toISOString(),
+      reviewedAt: null,
+    }
+    const existed = watchlist.some((entry) => entry.key === item.key)
+    setWatchlist((current) => upsertWatchlist(current, item))
+    notify(existed ? `${displayName}已在自选股中` : `已将${displayName}加入自选股`)
+  }
+
+  const selectWatchlistItem = (item: WatchlistItem) => {
+    setSymbolInput(item.symbol)
+    setActiveSymbol(item.symbol)
+    setWatchlistOpen(false)
+    notify(`正在加载自选股：${item.name}`)
   }
 
   const replaceWorkspaceDrawings = useCallback((next: Drawing[]) => {
@@ -949,6 +981,7 @@ export default function App() {
           <button className="nav-item" onClick={() => { setJournalOpen(true); notify('研究日志已打开，可按日期查看预测与revision') }}>复盘</button>
           <button className={`nav-item${backtestOpen ? ' is-active' : ''}`} onClick={() => setBacktestOpen(true)}>回测</button>
           <button className={`nav-item${alertOpen ? ' is-active' : ''}`} onClick={() => setAlertOpen(true)}>提醒{alertRules.filter((rule) => rule.enabled).length ? ` ${alertRules.filter((rule) => rule.enabled).length}` : ''}</button>
+          <button className={`nav-item${watchlistOpen ? ' is-active' : ''}`} onClick={() => setWatchlistOpen(true)}>自选 {watchlist.length}</button>
           <button className="nav-item" onClick={() => notify(`${displayName} · ${marketMeta.source}${marketMeta.cached ? ' · 缓存命中' : ''}`)}>数据</button>
         </nav>
 
@@ -982,7 +1015,7 @@ export default function App() {
       <section className="quote-header">
         <div className="instrument">
           <div className="instrument-title">
-            <span className="favorite">★</span>
+            <button className={`favorite${watchlist.some((item) => item.key === instrument.key) ? ' is-saved' : ''}`} type="button" aria-label="加入自选股" title="加入自选股" onClick={addCurrentToWatchlist}>★</button>
             <strong>{displayName}</strong>
             <span className="instrument-code">{instrument.symbol}</span>
             <span className="market-tag">{instrument.exchange}</span>
@@ -1386,6 +1419,15 @@ export default function App() {
         onRulesChange={setAlertRules}
         onClearEvents={() => setAlertEvents((current) => current.filter((event) => event.symbol !== instrument.symbol))}
         onClose={() => setAlertOpen(false)}
+        onMessage={notify}
+      />}
+
+      {watchlistOpen && <WatchlistPanel
+        currentKey={instrument.key}
+        items={watchlist}
+        onChange={setWatchlist}
+        onSelect={selectWatchlistItem}
+        onClose={() => setWatchlistOpen(false)}
         onMessage={notify}
       />}
 
