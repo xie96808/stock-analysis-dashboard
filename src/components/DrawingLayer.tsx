@@ -4,6 +4,8 @@ import {
   createDrawingId,
   commitDrawingGesture,
   defaultDrawingStyle,
+  drawingLayerClassName,
+  drawingUsesTimeCoordinate,
   formatMeasurement,
   replaceDrawingAnchor,
   toolToDrawingType,
@@ -139,6 +141,12 @@ export function DrawingLayer({
     return x == null || y == null ? null : { x, y }
   }
 
+  const pointForDrawing = (drawing: Drawing, anchor: DrawingAnchor) => {
+    if (drawingUsesTimeCoordinate(drawing.type) || !candleSeries) return point(anchor)
+    const y = candleSeries.priceToCoordinate(anchor.price)
+    return y == null ? null : { x: width / 2, y }
+  }
+
   const begin = (event: ReactPointerEvent<SVGSVGElement>) => {
     const target = event.target as SVGElement
     const object = target.closest<SVGElement>('[data-drawing-id]')
@@ -245,7 +253,7 @@ export function DrawingLayer({
     <>
       <svg
         ref={svgRef}
-        className={`drawing-layer${drawingType ? ' is-creating' : ''}`}
+        className={drawingLayerClassName(drawingType, selectedId)}
         width={width}
         height={mainPaneHeight}
         aria-label="金融坐标画线层"
@@ -256,7 +264,7 @@ export function DrawingLayer({
         onPointerCancel={() => setGesture(null)}
       >
         {rendered.map((drawing) => {
-          const anchors = drawing.anchors.map(point)
+          const anchors = drawing.anchors.map((anchor) => pointForDrawing(drawing, anchor))
           const first = anchors[0]
           const second = anchors[1]
           const common = {
@@ -324,7 +332,7 @@ export function DrawingLayer({
         {rendered.flatMap((drawing) => {
           if (drawing.id !== selectedId || drawing.locked || drawing.type === 'freehand' || drawing.type === 'highlighter' || drawing.type === 'text') return []
           return drawing.anchors.flatMap((anchor, anchorIndex) => {
-            const value = point(anchor)
+            const value = pointForDrawing(drawing, anchor)
             if (!value) return []
             const x = drawing.type === 'horizontal' ? Math.max(18, Math.min(width - 112, value.x)) : value.x
             return [<circle

@@ -67,6 +67,19 @@ def test_service_caches_daily_bars(tmp_path: Path) -> None:
     assert second.bars[-1].close == 12
 
 
+def test_cached_response_reports_the_current_requested_limit(tmp_path: Path) -> None:
+    provider = FakeProvider()
+    service = MarketDataService(tmp_path, provider=provider)  # type: ignore[arg-type]
+    asyncio.run(service.get_bars("001280", "1d", "qfq", 20))
+
+    result = asyncio.run(service.get_bars("001280", "1d", "qfq", 1))
+
+    assert provider.calls == 1
+    assert result.cached is True
+    assert result.requested_limit == 1
+    assert len(result.bars) == 1
+
+
 def test_service_filters_intraday_date(tmp_path: Path) -> None:
     service = MarketDataService(tmp_path, provider=FakeProvider())  # type: ignore[arg-type]
     result = asyncio.run(service.get_bars("001280", "5m", "qfq", 20, trading_date="2026-08-07"))

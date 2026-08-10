@@ -59,6 +59,14 @@ export function toolToDrawingType(tool: string): DrawingType | null {
   } as Record<string, DrawingType>)[tool] ?? null
 }
 
+export function drawingLayerClassName(drawingType: DrawingType | null, selectedId: string | null) {
+  return `drawing-layer${drawingType ? ' is-creating' : ''}${selectedId ? ' has-selection' : ''}`
+}
+
+export function drawingUsesTimeCoordinate(type: DrawingType) {
+  return type !== 'horizontal'
+}
+
 export function formatMeasurement(start: DrawingAnchor, end: DrawingAnchor) {
   const change = end.price - start.price
   const percent = start.price > 0 ? change / start.price * 100 : 0

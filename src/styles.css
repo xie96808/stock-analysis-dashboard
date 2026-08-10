@@ -1405,9 +1405,14 @@ button {
   touch-action: none;
 }
 
-.drawing-layer.is-creating {
+.drawing-layer.is-creating,
+.drawing-layer.has-selection {
   cursor: crosshair;
   pointer-events: all;
+}
+
+.drawing-layer.has-selection:not(.is-creating) {
+  cursor: default;
 }
 
 .drawing-object {

@@ -170,6 +170,7 @@ class MarketDataService:
                     "全部在线行情源暂不可用，当前使用过期本地缓存",
                 ]))
                 response.bars = response.bars[-normalized_limit:]
+                response.requested_limit = normalized_limit
                 if trading_date:
                     response.bars = [bar for bar in response.bars if bar.time.startswith(trading_date)]
                 return response
@@ -199,6 +200,7 @@ class MarketDataService:
             self.cache.set(cache_key, response.model_dump(mode="json"))
 
         response.bars = response.bars[-normalized_limit:]
+        response.requested_limit = normalized_limit
         if trading_date:
             response.bars = [bar for bar in response.bars if bar.time.startswith(trading_date)]
         return response

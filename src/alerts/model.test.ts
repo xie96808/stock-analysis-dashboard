@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { evaluateAlerts, parseAlertRules, type AlertRule } from './model'
+import { evaluateAlerts, parseAlertRules, selectAlertBars, type AlertRule } from './model'
 import type { StockBar } from '../data/fixture'
 
 const bars: StockBar[] = Array.from({ length: 40 }, (_, index) => ({
@@ -38,5 +38,12 @@ describe('alert evaluation', () => {
     expect(evaluateAlerts([rule({ enabled: false })], bars, 20).events).toHaveLength(0)
     expect(parseAlertRules('{bad json')).toEqual([])
     expect(parseAlertRules('[{"id":1}]')).toEqual([])
+  })
+
+  it('keeps indicator alerts on daily bars when the chart switches to minutes', () => {
+    const minutes = bars.slice(0, 2).map((bar, index) => ({ ...bar, date: `2026-08-10 09:${index ? '45' : '30'}` }))
+    expect(selectAlertBars(bars, minutes)).toBe(bars)
+    expect(selectAlertBars([], minutes)).toEqual([])
+    expect(selectAlertBars([], bars)).toBe(bars)
   })
 })

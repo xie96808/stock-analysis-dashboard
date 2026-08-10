@@ -30,6 +30,12 @@ export const alertTypeLabels: Record<AlertType, string> = {
   volume_ratio: '量比超过',
 }
 
+export function selectAlertBars(dailyBars: StockBar[], chartBars: StockBar[]) {
+  if (dailyBars.length && dailyBars.every((bar) => !bar.date.includes(' '))) return dailyBars
+  if (chartBars.length && chartBars.every((bar) => !bar.date.includes(' '))) return chartBars
+  return []
+}
+
 function ema(values: number[], period: number) {
   if (!values.length) return []
   const alpha = 2 / (period + 1)

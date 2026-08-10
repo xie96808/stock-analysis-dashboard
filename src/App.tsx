@@ -41,7 +41,7 @@ import { resolveChipAsOfDate } from './distributions/model'
 import { toIntradayPoints, toStockBars } from './market/transform'
 import { marketSessionState } from './market/refreshSchedule'
 import { parseDrawingStore, parseIndicatorConfig, shanghaiDateKey } from './state/preferences'
-import { evaluateAlerts, parseAlertEvents, parseAlertRules, type AlertEvent, type AlertRule } from './alerts/model'
+import { evaluateAlerts, parseAlertEvents, parseAlertRules, selectAlertBars, type AlertEvent, type AlertRule } from './alerts/model'
 import { parseWatchlist, upsertWatchlist, type WatchlistItem } from './watchlist/model'
 import './styles.css'
 
@@ -237,6 +237,7 @@ function recordFromSummary(record: JournalRecordSummary): RecordItem {
 export default function App() {
   const [bars, setBars] = useState<StockBar[]>(fixtureBars)
   const [chipBars, setChipBars] = useState<StockBar[]>(fixtureBars)
+  const [dailyAlertBars, setDailyAlertBars] = useState<StockBar[]>(fixtureBars)
   const [instrument, setInstrument] = useState<MarketInstrument>(fallbackInstrument)
   const [quote, setQuote] = useState<MarketQuoteResponse | null>(null)
   const [symbolInput, setSymbolInput] = useState('001280')
@@ -351,6 +352,10 @@ export default function App() {
   const previousBar = chartBars.length > 1 ? chartBars[chartBars.length - 2] : null
   const referenceClose = historicalCutoff ? previousBar?.close ?? lastBar.close : quote?.previous_close ?? previousBar?.close ?? lastBar.close
   const latestPrice = historicalCutoff ? lastBar.close : quote?.last ?? lastBar.close
+  const alertEvaluationBars = useMemo(
+    () => selectAlertBars(dailyAlertBars, bars),
+    [bars, dailyAlertBars],
+  )
   const priceChange = latestPrice - referenceClose
   const priceChangePercent = referenceClose ? priceChange / referenceClose * 100 : 0
   const displayName = instrument.name || instrument.symbol
@@ -410,6 +415,12 @@ export default function App() {
   }, [])
 
   useEffect(() => {
+    if (apiState === 'ready' && journalState === 'ready' && toast === '正在连接本地行情与研究日志') {
+      setToast('')
+    }
+  }, [apiState, journalState, toast])
+
+  useEffect(() => {
     window.localStorage.setItem('dashboard-font-scale', fontScale)
   }, [fontScale])
 
@@ -456,16 +467,18 @@ export default function App() {
     setHistoricalCutoff(null)
     setHoverBar(null)
     setQuote(null)
+    setDailyAlertBars([])
   }, [activeSymbol])
 
   useEffect(() => {
-    if (marketState !== 'ready' || !bars.length) return
+    if (marketState !== 'ready' || !alertEvaluationBars.length) return
     const relevantRules = alertRules.filter((rule) => rule.symbol === instrument.symbol)
     if (!relevantRules.length) return
-    const signature = JSON.stringify([instrument.symbol, marketMeta.fetchedAt, latestPrice, lastBar.date, relevantRules])
+    const alertDataDate = alertEvaluationBars.at(-1)?.date ?? ''
+    const signature = JSON.stringify([instrument.symbol, marketMeta.fetchedAt, latestPrice, alertDataDate, relevantRules])
     if (signature === alertEvaluationRef.current) return
     alertEvaluationRef.current = signature
-    const result = evaluateAlerts(relevantRules, bars, latestPrice)
+    const result = evaluateAlerts(relevantRules, alertEvaluationBars, latestPrice)
     if (result.changed) {
       const byId = new Map(result.rules.map((rule) => [rule.id, rule]))
       setAlertRules((current) => current.map((rule) => byId.get(rule.id) ?? rule))
@@ -474,7 +487,7 @@ export default function App() {
       setAlertEvents((current) => [...result.events, ...current].slice(0, 100))
       notify(`条件提醒：${result.events[0].message}`)
     }
-  }, [alertRules, bars, instrument.symbol, lastBar.date, latestPrice, marketMeta.fetchedAt, marketState, notify])
+  }, [alertEvaluationBars, alertRules, instrument.symbol, latestPrice, marketMeta.fetchedAt, marketState, notify])
 
   useEffect(() => {
     if (instrument.market !== 'HK' || (distributionMode !== 'chips' && lastDistributionMode !== 'chips')) return
@@ -562,12 +575,21 @@ export default function App() {
         limit: 2000,
         refresh: forceRefresh,
       }, controller.signal)
+    const alertBarsRequest = selectedTimeframe === '1d' && adjustment === 'qfq'
+      ? primaryBarsRequest
+      : getMarketBars(activeSymbol, {
+        timeframe: '1d',
+        adjustment: 'qfq',
+        limit: 2000,
+        refresh: forceRefresh,
+      }, controller.signal)
     Promise.all([
       primaryBarsRequest,
       getMarketQuote(activeSymbol, controller.signal).catch(() => null),
       chipBarsRequest.catch(() => null),
+      alertBarsRequest.catch(() => null),
     ])
-      .then(([response, currentQuote, chipResponse]) => {
+      .then(([response, currentQuote, chipResponse, alertResponse]) => {
         if (requestId !== marketRequestIdRef.current) return
         const nextBars = toStockBars(response)
         if (!nextBars.length) throw new Error('行情源未返回K线')
@@ -583,6 +605,7 @@ export default function App() {
         setChartDataRevision((current) => ({ id: current.id + 1, preserveView: forceRefresh }))
         setBars(nextBars)
         setChipBars(chipResponse ? toStockBars(chipResponse) : selectedTimeframe === '1d' ? nextBars : [])
+        setDailyAlertBars(alertResponse ? toStockBars(alertResponse) : [])
         setInstrument(response.instrument)
         setQuote(currentQuote)
         setMarketMeta({
@@ -609,6 +632,7 @@ export default function App() {
         if (activeSymbol === '001280') {
           setBars(fixtureBars)
           setChipBars(fixtureBars)
+          setDailyAlertBars(fixtureBars)
           setInstrument(fallbackInstrument)
           setMarketMeta({
             source: 'deterministic-fixture', cached: false, delayed: true, fetchedAt: null,
@@ -970,6 +994,11 @@ export default function App() {
           <input
             value={symbolInput}
             onChange={(event) => setSymbolInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter') return
+              event.preventDefault()
+              event.currentTarget.form?.requestSubmit()
+            }}
             aria-label="股票代码"
             placeholder="A股 / 港股代码"
           />
