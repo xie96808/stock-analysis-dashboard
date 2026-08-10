@@ -2,7 +2,9 @@
 
 面向中国 A 股与港股的本地优先技术分析与复盘工作台。它把 TradingView 式的宽阔画布、灵活画线和时间轴操作，与按日期追溯的研究日志放在同一个界面中，适合收盘后的个人复盘与预测。
 
-> 当前版本：`v1.0.2`　·　技术栈：React + TypeScript + Lightweight Charts + FastAPI + SQLite　·　许可证：[MIT](./LICENSE)
+技术栈：React + TypeScript + Lightweight Charts + FastAPI + SQLite　
+
+许可证：[MIT](./LICENSE)
 
 ## 产品截图
 
@@ -120,11 +122,11 @@ data/                本地个人数据（运行后生成，不进入 Git）
 
 ## 参与项目
 
-欢迎提交 Issue 或 Pull Request，尤其欢迎交流行情数据质量、画线交互、筹码模型、跨周期坐标映射与复盘工作流。喜欢这个项目的话，也可以点一个 Star，让更多投资研究者看到它。
+欢迎提交 Issue 或 Pull Request，尤其欢迎交流行情数据质量、画线交互、筹码模型、跨周期坐标映射与复盘工作流。喜欢这个项目的话，欢迎点一个 Star 和我交流！。
 
 ## 联系作者
 
-欢迎交流产品建议与投资研究方法。添加时请备注 `GitHub / stock-analysis-dashboard`。
+欢迎萌新和大佬一起交流产品建议与投资研究方法！添加时请备注 `GitHub`，感谢: )
 
 <p align="center">
   <img src="./docs/wechat-contact.png" alt="作者微信二维码" width="360" />
