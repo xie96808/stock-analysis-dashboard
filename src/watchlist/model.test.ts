@@ -26,4 +26,3 @@ describe('watchlist model', () => {
     expect(parseWatchlist('[{"symbol":"1"}]')).toEqual([])
   })
 })
-

@@ -41,4 +41,3 @@ export function WatchlistPanel({ currentKey, items, onChange, onSelect, onClose,
     </aside>
   </div>
 }
-

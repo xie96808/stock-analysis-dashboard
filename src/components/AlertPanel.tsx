@@ -63,4 +63,3 @@ export function AlertPanel({ symbol, name, price, rules, events, onRulesChange, 
     </section>
   </div>
 }
-

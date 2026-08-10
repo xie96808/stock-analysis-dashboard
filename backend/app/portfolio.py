@@ -155,4 +155,3 @@ class PaperPortfolioRepository:
             self._calculate(remaining)
             connection.execute("DELETE FROM paper_trades WHERE id = ?", (trade_id,))
         return self.snapshot()
-

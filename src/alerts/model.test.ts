@@ -40,4 +40,3 @@ describe('alert evaluation', () => {
     expect(parseAlertRules('[{"id":1}]')).toEqual([])
   })
 })
-

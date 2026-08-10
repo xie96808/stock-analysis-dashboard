@@ -41,4 +41,3 @@ export function marketSessionState(now: Date, market: SupportedMarket): MarketSe
   if (clock.minutes < afternoonEnd) return { open: true, phase: 'afternoon', label: '下午交易' }
   return { open: false, phase: 'closed', label: '已收市' }
 }
-

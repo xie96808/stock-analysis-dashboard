@@ -49,4 +49,3 @@ export function nextPendingItem(items: WatchlistItem[], currentKey?: string) {
   const currentIndex = pending.findIndex((item) => item.key === currentKey)
   return pending[(currentIndex + 1) % pending.length]
 }
-
