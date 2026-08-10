@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from .config import settings
+from .backtest import BacktestRequest, BacktestResult, run_backtest
 from .market_data import MarketDataService
 from .market_data.models import Adjustment, BarsResponse, InstrumentPayload, QuoteResponse, Timeframe
 from .market_data.symbols import SymbolError
@@ -98,6 +99,25 @@ async def market_quote(symbol: str) -> QuoteResponse:
 @app.get("/api/market/providers", tags=["market-data"])
 async def market_providers() -> list[dict]:
     return market_data.provider_status()
+
+
+@app.post("/api/backtests/run", response_model=BacktestResult, tags=["backtest"])
+async def execute_backtest(payload: BacktestRequest) -> BacktestResult:
+    try:
+        response = await market_data.get_bars(
+            payload.symbol, "1d", "qfq", 2000, refresh=False
+        )
+        return run_backtest(
+            payload,
+            response.bars,
+            response.instrument.market,
+            response.source,
+            response.fetched_at.isoformat(),
+        )
+    except SymbolError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except (ProviderError, httpx.HTTPError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
 
 @app.get("/api/journal/records", tags=["journal"])

@@ -28,6 +28,7 @@ import {
   type IndicatorConfig,
   type ProfileLayout,
 } from './components/ChartWorkbench'
+import { BacktestPanel } from './components/BacktestPanel'
 import { Icon } from './components/Icon'
 import { IntradayView } from './components/IntradayView'
 import { JournalCalendar } from './components/JournalCalendar'
@@ -254,6 +255,7 @@ export default function App() {
     parseIndicatorConfig(window.localStorage.getItem('dashboard-indicators-v1'), defaultIndicators)
   ))
   const [journalOpen, setJournalOpen] = useState(true)
+  const [backtestOpen, setBacktestOpen] = useState(false)
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [selectedJournalDate, setSelectedJournalDate] = useState(shanghaiDateKey)
   const [selectedDay, setSelectedDay] = useState<StockBar | null>(null)
@@ -887,8 +889,9 @@ export default function App() {
         </form>
 
         <nav className="header-nav" aria-label="工作区导航">
-          <button className="nav-item is-active">图表</button>
+          <button className={`nav-item${backtestOpen ? '' : ' is-active'}`} onClick={() => setBacktestOpen(false)}>图表</button>
           <button className="nav-item" onClick={() => { setJournalOpen(true); notify('研究日志已打开，可按日期查看预测与revision') }}>复盘</button>
+          <button className={`nav-item${backtestOpen ? ' is-active' : ''}`} onClick={() => setBacktestOpen(true)}>回测</button>
           <button className="nav-item" onClick={() => notify(`${displayName} · ${marketMeta.source}${marketMeta.cached ? ' · 缓存命中' : ''}`)}>数据</button>
         </nav>
 
@@ -1298,6 +1301,14 @@ export default function App() {
           </aside>
         )}
       </main>
+
+      {backtestOpen && <BacktestPanel
+        symbol={instrument.symbol}
+        name={displayName}
+        market={instrument.market}
+        onClose={() => setBacktestOpen(false)}
+        onMessage={notify}
+      />}
 
       {previewRecord && (() => {
         const revision = previewRecord.revisions.find((item) => item.id === previewRevisionId) ?? previewRecord.current_revision

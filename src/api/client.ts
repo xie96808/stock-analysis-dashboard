@@ -73,6 +73,44 @@ export type MarketProviderStatus = {
   last_success_at: string | null
 }
 
+export type BacktestStrategy = 'ma_cross' | 'breakout' | 'macd'
+
+export type BacktestRequest = {
+  symbol: string
+  start_date?: string
+  end_date?: string
+  strategy: BacktestStrategy
+  parameters: Record<string, number>
+  initial_cash: number
+  commission_rate: number
+  minimum_commission: number
+  stamp_tax_rate: number
+  slippage_bps: number
+  lot_size?: number
+}
+
+export type BacktestResult = {
+  symbol: string
+  market: 'CN' | 'HK'
+  strategy: BacktestStrategy
+  parameters: Record<string, number>
+  start_date: string
+  end_date: string
+  execution_model: string
+  data_source: string
+  data_fetched_at: string
+  metrics: {
+    total_return: number; annualized_return: number; benchmark_return: number; max_drawdown: number;
+    sharpe_ratio: number; trade_count: number; win_rate: number; profit_factor: number | null; ending_equity: number;
+  }
+  equity_curve: Array<{ date: string; equity: number; cash: number; position: number; close: number; benchmark: number }>
+  trades: Array<{
+    date: string; side: 'buy' | 'sell'; price: number; quantity: number; gross_amount: number;
+    fees: number; cash_after: number; position_after: number; reason: string; realized_pnl: number | null;
+  }>
+  warnings: string[]
+}
+
 export type JournalRevision = {
   id: string
   record_id: string
@@ -207,6 +245,10 @@ export function getMarketQuote(symbol: string, signal?: AbortSignal) {
 
 export function getMarketProviders(signal?: AbortSignal) {
   return requestJson<MarketProviderStatus[]>('/api/market/providers', signal)
+}
+
+export function runBacktest(payload: BacktestRequest, signal?: AbortSignal) {
+  return requestJson<BacktestResult>('/api/backtests/run', signal, { method: 'POST', body: JSON.stringify(payload) })
 }
 
 export function listJournalRecords(options: { dateKey?: string; symbol?: string; includeDeleted?: boolean } = {}, signal?: AbortSignal) {

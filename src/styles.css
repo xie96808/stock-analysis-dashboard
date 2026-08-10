@@ -2508,6 +2508,93 @@ button {
   }
 }
 
+.backtest-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background: rgba(20, 25, 34, 0.34);
+  backdrop-filter: blur(4px);
+}
+
+.backtest-dialog {
+  width: min(1180px, 96vw);
+  height: min(800px, 92vh);
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(25, 31, 42, 0.24);
+}
+
+.backtest-dialog > header {
+  height: 92px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--line);
+}
+
+.backtest-dialog h2 { margin: 2px 0; font-size: 22px; }
+.backtest-dialog header p { margin: 0; color: var(--muted); font-size: 12px; }
+.backtest-dialog header button { width: 36px; height: 36px; border-radius: 8px; font-size: 24px; }
+.backtest-body { height: calc(100% - 92px); display: grid; grid-template-columns: 278px 1fr; }
+
+.backtest-config {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px;
+  border-right: 1px solid var(--line);
+  background: #f8f9fb;
+}
+
+.backtest-config label { display: grid; gap: 6px; color: var(--muted); font-size: 12px; }
+.backtest-config input,
+.backtest-config select { width: 100%; height: 38px; border: 1px solid var(--line-strong); border-radius: 7px; padding: 0 10px; background: #fff; color: var(--text); }
+.backtest-periods { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.backtest-periods label:last-child:nth-child(3) { grid-column: 1 / -1; }
+.backtest-assumptions { display: grid; gap: 5px; padding: 12px; border: 1px solid #dfe4ec; border-radius: 8px; background: #fff; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.backtest-assumptions strong { color: var(--text); font-size: 12px; }
+.backtest-run { margin-top: auto; height: 42px; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 8px; background: var(--blue); color: #fff; font-weight: 700; }
+.backtest-run:disabled { opacity: 0.58; }
+.backtest-results { min-width: 0; overflow: auto; padding: 22px 24px; }
+.backtest-empty { height: 100%; display: grid; place-content: center; justify-items: center; gap: 9px; color: var(--muted); }
+.backtest-empty svg { width: 44px; height: 44px; color: var(--blue); }
+.backtest-empty strong { color: var(--text); font-size: 18px; }
+.backtest-result-heading { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 16px; }
+.backtest-result-heading > div { display: grid; gap: 3px; }
+.backtest-result-heading strong { font-size: 18px; }
+.backtest-result-heading span { color: var(--muted); font-size: 12px; }
+.backtest-metrics { display: grid; grid-template-columns: repeat(6, 1fr); gap: 9px; }
+.backtest-metrics > div { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfd; }
+.backtest-metrics span { color: var(--muted); font-size: 11px; }
+.backtest-metrics strong { font-size: 16px; }
+.is-positive { color: #d94e64 !important; }
+.is-negative { color: #249975 !important; }
+.backtest-curve { position: relative; height: 190px; margin: 18px 0; border: 1px solid var(--line); border-radius: 9px; background: linear-gradient(#fff, #fafbfc); overflow: hidden; }
+.backtest-curve svg { width: 100%; height: 160px; overflow: visible; }
+.backtest-curve polyline { fill: none; stroke: var(--blue); stroke-width: 1.8; vector-effect: non-scaling-stroke; }
+.backtest-curve span { position: absolute; left: 12px; bottom: 8px; color: var(--muted); font-size: 11px; }
+.backtest-warnings { display: grid; gap: 4px; margin-bottom: 12px; padding: 10px; border-radius: 7px; background: #fff8e8; color: #8c6820; font-size: 11px; }
+.backtest-trades { max-height: 250px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.backtest-trades table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.backtest-trades th { position: sticky; top: 0; z-index: 1; background: #f5f7fa; color: var(--muted); text-align: right; }
+.backtest-trades th:first-child,
+.backtest-trades td:first-child { text-align: left; }
+.backtest-trades th,
+.backtest-trades td { padding: 9px 10px; border-bottom: 1px solid var(--line); text-align: right; }
+.backtest-disclaimer { display: block; margin-top: 12px; color: var(--muted); line-height: 1.5; }
+
+@media (max-width: 900px) {
+  .backtest-backdrop { padding: 12px; }
+  .backtest-body { grid-template-columns: 220px 1fr; }
+  .backtest-metrics { grid-template-columns: repeat(3, 1fr); }
+}
+
 /* P1 type system: the large preset is intentionally the product default. */
 .app-shell[data-font-scale="standard"] {
   --font-adjust: 0px;
