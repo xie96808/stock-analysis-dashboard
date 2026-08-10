@@ -48,6 +48,7 @@ const tools = [
   ['brush', '自由画笔'],
   ['brush', '荧光笔'],
   ['rectangle', '矩形区域'],
+  ['rectangle', '锚定分布'],
   ['text', '文本'],
   ['measure', '测量'],
   ['eraser', '橡皮擦'],
@@ -164,7 +165,8 @@ export default function App() {
   const lastBar = bars.at(-1) ?? fixtureBars.at(-1)!
   const [hoverBar, setHoverBar] = useState<StockBar | null>(null)
   const [logPrice, setLogPrice] = useState(true)
-  const [profileVisible, setProfileVisible] = useState(true)
+  const [profileMode, setProfileMode] = useState<'overlay' | 'dock' | 'hidden'>('overlay')
+  const [profileWidth, setProfileWidth] = useState(31)
   const [cleanMode, setCleanMode] = useState(false)
   const [indicatorOpen, setIndicatorOpen] = useState(false)
   const [indicators, setIndicators] = useState<IndicatorConfig>(() => {
@@ -408,7 +410,7 @@ export default function App() {
         <div className="brand" aria-label="研判看板">
           <span className="brand-mark">研</span>
           <span className="brand-name">研判</span>
-          <span className="brand-phase">P4</span>
+          <span className="brand-phase">P5</span>
         </div>
 
         <form className="symbol-search" onSubmit={submitSymbol}>
@@ -521,9 +523,20 @@ export default function App() {
             <option value="hfq">后复权</option>
           </select>
         </label>
-        <button className={`toolbar-toggle${profileVisible ? ' is-active' : ''}`} onClick={() => setProfileVisible((value) => !value)}>
+        <button className={`toolbar-toggle${profileMode !== 'hidden' ? ' is-active' : ''}`} onClick={() => setProfileMode((value) => value === 'hidden' ? 'overlay' : 'hidden')}>
           成交量分布
         </button>
+        <label className="inline-select profile-mode-select">
+          <span>分布 · {profileMode === 'overlay' ? '覆盖' : profileMode === 'dock' ? '停靠' : '隐藏'}</span>
+          <select aria-label="成交量分布模式" value={profileMode} onChange={(event) => setProfileMode(event.target.value as 'overlay' | 'dock' | 'hidden')}>
+            <option value="overlay">覆盖</option>
+            <option value="dock">停靠</option>
+            <option value="hidden">隐藏</option>
+          </select>
+        </label>
+        {profileMode !== 'hidden' && <label className="profile-width-control" title={`分布宽度 ${profileWidth}%`}>
+          <span>宽</span><input aria-label="成交量分布宽度" type="range" min="18" max="42" value={profileWidth} onChange={(event) => setProfileWidth(Number(event.target.value))} />
+        </label>}
         <button className={`toolbar-toggle${cleanMode ? ' is-active' : ''}`} onClick={() => setCleanMode((value) => !value)}>
           纯净模式
         </button>
@@ -641,7 +654,9 @@ export default function App() {
               market={instrument.market}
               timeframe={timeframe}
               logPrice={logPrice}
-              profileVisible={profileVisible && !cleanMode}
+              profileVisible={profileMode !== 'hidden' && !cleanMode}
+              profileMode={profileMode}
+              profileWidth={profileWidth}
               cleanMode={cleanMode}
               indicators={indicators}
               activeTool={activeTool}

@@ -554,6 +554,21 @@ button {
   font-weight: 650;
 }
 
+.profile-width-control {
+  display: flex;
+  height: 31px;
+  align-items: center;
+  gap: 4px;
+  padding: 0 4px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.profile-width-control input {
+  width: 58px;
+  accent-color: var(--blue);
+}
+
 .toolbar-spacer,
 .status-spacer {
   flex: 1;
@@ -1042,6 +1057,13 @@ button {
   pointer-events: none;
 }
 
+.volume-profile[data-mode="dock"] {
+  padding-left: 8px;
+  border-left: 1px solid rgba(158, 167, 181, 0.34);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: -8px 0 20px rgba(32, 39, 52, 0.035);
+}
+
 .profile-heading {
   position: absolute;
   top: 10px;
@@ -1057,15 +1079,57 @@ button {
   position: absolute;
   right: 0;
   display: flex;
-  height: 15px;
+  height: 9px;
   min-width: 14px;
   transform: translateY(-50%);
-  opacity: 0.78;
+  opacity: 0.48;
+}
+
+.profile-row.is-value-area {
+  opacity: 0.82;
 }
 
 .profile-row.is-poc {
-  height: 20px;
+  height: 14px;
   opacity: 1;
+}
+
+.profile-level {
+  position: absolute;
+  right: 0;
+  z-index: 4;
+  display: flex;
+  min-width: 92px;
+  height: 22px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 0 6px;
+  transform: translateY(-50%);
+  border-radius: 4px 0 0 4px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #4d5562;
+  font-size: 12px;
+  box-shadow: 0 0 0 1px rgba(130, 140, 155, 0.22);
+}
+
+.profile-level span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.profile-level strong {
+  font-size: 14px;
+}
+
+.profile-level.is-poc {
+  background: #2f3540;
+  color: #fff;
+}
+
+.profile-level.is-poc span {
+  color: #dbe1ea;
 }
 
 .profile-sell {

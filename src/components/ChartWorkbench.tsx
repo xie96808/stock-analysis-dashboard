@@ -19,6 +19,7 @@ import {
 import { calculateMacd, movingAverage, type StockBar } from '../data/fixture'
 import type { Drawing } from '../drawings/model'
 import { DrawingLayer } from './DrawingLayer'
+import { calculateVolumeProfile } from '../profile/calculate'
 
 export type IndicatorConfig = {
   maEnabled: boolean
@@ -40,6 +41,8 @@ type Props = {
   timeframe: string
   logPrice: boolean
   profileVisible: boolean
+  profileMode: 'overlay' | 'dock' | 'hidden'
+  profileWidth: number
   cleanMode: boolean
   indicators: IndicatorConfig
   activeTool: string
@@ -52,7 +55,9 @@ type Props = {
 }
 
 type OverlayGeometry = {
-  profile: { y: number; width: number; sell: number; buy: number; emphasis?: boolean }[]
+  profile: { y: number; width: number; sell: number; buy: number; emphasis: boolean; inValueArea: boolean; price: number }[]
+  profileStats: { poc: number; vah: number; val: number; pocY: number | null; vahY: number | null; valY: number | null }
+  profileSource: 'visible' | 'anchored'
   mainPaneHeight: number
   width: number
   revision: number
@@ -112,26 +117,6 @@ function averageVolume(bars: StockBar[], length: number) {
   return values.reduce((sum, bar) => sum + bar.volume, 0) / values.length
 }
 
-function visualProfile(bars: StockBar[], bins = 18) {
-  if (!bars.length) return []
-  const low = Math.min(...bars.map((bar) => bar.low))
-  const high = Math.max(...bars.map((bar) => bar.high))
-  const step = Math.max((high - low) / bins, Number.EPSILON)
-  const rows = Array.from({ length: bins }, (_, index) => ({
-    price: low + (index + 0.5) * step,
-    buy: 0,
-    sell: 0,
-  }))
-  bars.forEach((bar) => {
-    const index = Math.max(0, Math.min(bins - 1, Math.floor((bar.close - low) / step)))
-    const rising = bar.close >= bar.open
-    rows[index].buy += bar.volume * (rising ? 0.58 : 0.42)
-    rows[index].sell += bar.volume * (rising ? 0.42 : 0.58)
-  })
-  const poc = rows.reduce((best, row) => row.buy + row.sell > best.buy + best.sell ? row : best, rows[0])
-  return rows.map((row) => ({ ...row, emphasis: row === poc }))
-}
-
 export function ChartWorkbench({
   bars,
   instrumentLabel,
@@ -140,6 +125,8 @@ export function ChartWorkbench({
   timeframe,
   logPrice,
   profileVisible,
+  profileMode,
+  profileWidth,
   cleanMode,
   indicators,
   activeTool,
@@ -153,14 +140,25 @@ export function ChartWorkbench({
   const hostRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
-  const [geometry, setGeometry] = useState<OverlayGeometry>({ profile: [], mainPaneHeight: 420, width: 0, revision: 0 })
+  const [geometry, setGeometry] = useState<OverlayGeometry>({
+    profile: [],
+    profileStats: { poc: 0, vah: 0, val: 0, pocY: null, vahY: null, valY: null },
+    profileSource: 'visible',
+    mainPaneHeight: 420,
+    width: 0,
+    revision: 0,
+  })
 
   const byTime = useMemo(() => new Map(bars.map((bar) => [timeKey(chartTime(bar.date)), bar])), [bars])
   const macd = useMemo(
     () => calculateMacd(bars, indicators.macdFast, indicators.macdSlow, indicators.macdSignal),
     [bars, indicators.macdFast, indicators.macdSignal, indicators.macdSlow],
   )
-  const profileSource = useMemo(() => visualProfile(bars), [bars])
+  const anchoredRange = useMemo(() => {
+    const anchor = drawings.filter((drawing) => drawing.type === 'profile-range' && !drawing.hidden).at(-1)
+    if (!anchor || anchor.anchors.length < 2) return null
+    return [Math.min(anchor.anchors[0].timestampMs, anchor.anchors[1].timestampMs), Math.max(anchor.anchors[0].timestampMs, anchor.anchors[1].timestampMs)] as const
+  }, [drawings])
   const latestBar = bars.at(-1)
   const latestMacd = macd.at(-1)
   // Base the chart time type on the payload, not the selected button. During a
@@ -329,18 +327,42 @@ export function ChartWorkbench({
     chartRef.current = chart
     candleRef.current = candleSeries
     const updateGeometry = () => {
-      const profile = profileSource.flatMap((row) => {
+      const visibleRange = chart.timeScale().getVisibleLogicalRange()
+      const visibleBars = visibleRange
+        ? bars.slice(Math.max(0, Math.floor(visibleRange.from)), Math.min(bars.length, Math.ceil(visibleRange.to) + 1))
+        : bars
+      const anchoredBars = anchoredRange
+        ? bars.filter((bar) => {
+          const timestamp = bar.date.includes(' ')
+            ? new Date(`${bar.date.replace(' ', 'T')}:00+08:00`).getTime()
+            : new Date(`${bar.date.slice(0, 10)}T00:00:00+08:00`).getTime()
+          return timestamp >= anchoredRange[0] && timestamp <= anchoredRange[1]
+        })
+        : []
+      const profileResult = calculateVolumeProfile(anchoredBars.length ? anchoredBars : visibleBars.length ? visibleBars : bars, 48, 0.7, logPrice)
+      const profile = profileResult.rows.flatMap((row) => {
         const y = candleSeries.priceToCoordinate(row.price)
         return y == null ? [] : [{
           y,
-          width: row.sell + row.buy,
+          width: row.total,
           sell: row.sell,
           buy: row.buy,
           emphasis: row.emphasis,
+          inValueArea: row.inValueArea,
+          price: row.price,
         }]
       })
       setGeometry((current) => ({
         profile,
+        profileStats: {
+          poc: profileResult.poc,
+          vah: profileResult.vah,
+          val: profileResult.val,
+          pocY: candleSeries.priceToCoordinate(profileResult.poc),
+          vahY: candleSeries.priceToCoordinate(profileResult.vah),
+          valY: candleSeries.priceToCoordinate(profileResult.val),
+        },
+        profileSource: anchoredBars.length ? 'anchored' : 'visible',
         mainPaneHeight: chart.panes()[0]?.getHeight() ?? host.clientHeight * 0.64,
         width: host.clientWidth,
         revision: current.revision + 1,
@@ -360,14 +382,18 @@ export function ChartWorkbench({
         return
       }
       onHoverBar(byTime.get(timeKey(param.time)) ?? null)
-      updateGeometry()
     })
     chart.subscribeClick((param) => {
       if (!param.time) return
       const bar = byTime.get(timeKey(param.time))
       if (bar) onSelectBar(bar)
     })
-    chart.timeScale().subscribeVisibleLogicalRangeChange(updateGeometry)
+    let profileTimer = 0
+    const scheduleProfile = () => {
+      window.clearTimeout(profileTimer)
+      profileTimer = window.setTimeout(updateGeometry, 140)
+    }
+    chart.timeScale().subscribeVisibleLogicalRangeChange(scheduleProfile)
 
     const observer = new ResizeObserver(() => {
       chart.resize(host.clientWidth, host.clientHeight)
@@ -378,12 +404,13 @@ export function ChartWorkbench({
     })
     observer.observe(host)
     return () => {
+      window.clearTimeout(profileTimer)
       observer.disconnect()
       chart.remove()
       chartRef.current = null
       candleRef.current = null
     }
-  }, [bars, byTime, cleanMode, fontScale, indicators, instrumentLabel, isMinute, latestBar, macd, onHoverBar, onSelectBar, profileSource, timeframe])
+  }, [anchoredRange, bars, byTime, cleanMode, fontScale, indicators, instrumentLabel, isMinute, latestBar, logPrice, macd, onHoverBar, onSelectBar, timeframe])
 
   useEffect(() => {
     const series = candleRef.current
@@ -395,6 +422,20 @@ export function ChartWorkbench({
       window.dispatchEvent(new Event('resize'))
     })
   }, [isMinute, logPrice])
+
+  const profileLevels = useMemo(() => {
+    const source = [
+      { name: 'VAH', price: geometry.profileStats.vah, y: geometry.profileStats.vahY },
+      { name: 'POC', price: geometry.profileStats.poc, y: geometry.profileStats.pocY },
+      { name: 'VAL', price: geometry.profileStats.val, y: geometry.profileStats.valY },
+    ].filter((item): item is { name: string; price: number; y: number } => item.y != null).sort((left, right) => left.y - right.y)
+    source.forEach((item, index) => {
+      if (index > 0 && item.y - source[index - 1].y < 24) item.y = source[index - 1].y + 24
+    })
+    const overflow = (source.at(-1)?.y ?? 0) - (geometry.mainPaneHeight - 14)
+    if (overflow > 0) source.forEach((item) => { item.y -= overflow })
+    return source
+  }, [geometry.mainPaneHeight, geometry.profileStats])
 
   return (
     <div className="chart-stage" aria-label={`${instrumentLabel}${timeframe}图表`}>
@@ -428,14 +469,19 @@ export function ChartWorkbench({
       </div>}
 
       {profileVisible && (
-        <div className="volume-profile" style={{ height: geometry.mainPaneHeight }} aria-label="可视区成交量分布">
-          <div className="profile-heading">可视区成交量分布</div>
+        <div
+          className="volume-profile"
+          data-mode={profileMode}
+          style={{ height: geometry.mainPaneHeight, width: `${profileWidth}%` }}
+          aria-label={geometry.profileSource === 'anchored' ? '锚定区间成交量分布' : '可视区成交量分布'}
+        >
+          <div className="profile-heading">{geometry.profileSource === 'anchored' ? '锚定区间' : '可视区'}成交量分布</div>
           {geometry.profile.map((row, index) => {
             const maxWidth = Math.max(...geometry.profile.map((item) => item.width), 1)
             return (
               <div
                 key={`${row.y}-${index}`}
-                className={`profile-row${row.emphasis ? ' is-poc' : ''}`}
+                className={`profile-row${row.emphasis ? ' is-poc' : ''}${row.inValueArea ? ' is-value-area' : ''}`}
                 style={{ top: row.y, width: `${Math.max(3, row.width / maxWidth * 100)}%` }}
               >
                 <span className="profile-sell" style={{ flex: row.sell }} />
@@ -447,6 +493,11 @@ export function ChartWorkbench({
             <span><i className="legend-sell" />主动卖</span>
             <span><i className="legend-buy" />主动买</span>
           </div>
+          {profileLevels.map((level) => (
+            <div key={level.name} className={`profile-level is-${level.name.toLowerCase()}`} style={{ top: level.y }}>
+              <span>{level.name}</span><strong>{level.price.toFixed(2)}</strong>
+            </div>
+          ))}
         </div>
       )}
 

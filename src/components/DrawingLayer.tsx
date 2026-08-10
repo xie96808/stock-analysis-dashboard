@@ -267,7 +267,7 @@ export function DrawingLayer({
             return <polyline key={drawing.id} data-drawing-id={drawing.id} className={className} points={points.map((value) => `${value.x},${value.y}`).join(' ')} fill="none" strokeLinecap="round" strokeLinejoin="round" {...common} />
           }
           if (!second) return null
-          if (drawing.type === 'rectangle') {
+          if (drawing.type === 'rectangle' || drawing.type === 'profile-range') {
             return <rect key={drawing.id} data-drawing-id={drawing.id} className={className} x={Math.min(first.x, second.x)} y={Math.min(first.y, second.y)} width={Math.abs(second.x - first.x)} height={Math.abs(second.y - first.y)} fill={drawing.style.color} fillOpacity={drawing.style.opacity} {...common} strokeOpacity={0.85} />
           }
           const dx = second.x - first.x

@@ -1,4 +1,4 @@
-export type DrawingType = 'horizontal' | 'trend' | 'ray' | 'channel' | 'rectangle' | 'text' | 'freehand' | 'highlighter'
+export type DrawingType = 'horizontal' | 'trend' | 'ray' | 'channel' | 'rectangle' | 'profile-range' | 'text' | 'freehand' | 'highlighter'
 
 export type DrawingAnchor = {
   timestampMs: number
@@ -38,6 +38,7 @@ export function defaultDrawingStyle(type: DrawingType): DrawingStyle {
   if (type === 'highlighter') return { color: '#f2c94c', width: 14, opacity: 0.34 }
   if (type === 'freehand') return { color: '#2962e8', width: 2.2, opacity: 0.92 }
   if (type === 'rectangle') return { color: '#2962e8', width: 1.7, opacity: 0.16 }
+  if (type === 'profile-range') return { color: '#8b61d6', width: 1.6, opacity: 0.1, dash: 'dashed' }
   if (type === 'text') return { color: '#343a46', width: 1.5, opacity: 1 }
   return { color: '#e84f63', width: 1.8, opacity: 0.95 }
 }
@@ -49,6 +50,7 @@ export function toolToDrawingType(tool: string): DrawingType | null {
     射线: 'ray',
     平行通道: 'channel',
     矩形区域: 'rectangle',
+    锚定分布: 'profile-range',
     文本: 'text',
     自由画笔: 'freehand',
     荧光笔: 'highlighter',
