@@ -8,7 +8,7 @@
 
 ### 日 K、筹码分布与研究日志
 
-![研判主界面：日 K、筹码分布与研究日志](./docs/dashboard-overview.jpg)
+![研判主界面：日 K、筹码分布与研究日志](./docs/dashboard-overview.png)
 
 ### 单日分时复盘
 
