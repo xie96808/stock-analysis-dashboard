@@ -15,6 +15,7 @@ import { Icon } from './components/Icon'
 import { IntradayView } from './components/IntradayView'
 import { JournalCalendar } from './components/JournalCalendar'
 import { fixtureBars, type IntradayPoint, type StockBar } from './data/fixture'
+import { emptyDrawingStore, type Drawing, type DrawingStore } from './drawings/model'
 import './styles.css'
 
 const timeframes = ['1分', '5分', '15分', '30分', '60分', '日K', '周K', '月K']
@@ -42,7 +43,10 @@ const tools = [
   ['cursor', '选择'],
   ['trend', '趋势线'],
   ['horizontal', '水平线'],
+  ['trend', '射线'],
+  ['horizontal', '平行通道'],
   ['brush', '自由画笔'],
+  ['brush', '荧光笔'],
   ['rectangle', '矩形区域'],
   ['text', '文本'],
   ['measure', '测量'],
@@ -179,7 +183,17 @@ export default function App() {
   const [intradayLoading, setIntradayLoading] = useState(false)
   const [timeframe, setTimeframe] = useState('日K')
   const [activeTool, setActiveTool] = useState('选择')
+  const [snapMode, setSnapMode] = useState<'off' | 'weak' | 'strong'>('weak')
   const [workspace, setWorkspace] = useState('主分析')
+  const [drawingStore, setDrawingStore] = useState<DrawingStore>(() => {
+    try {
+      const saved = window.localStorage.getItem('dashboard-drawings-v1')
+      return saved ? JSON.parse(saved) as DrawingStore : emptyDrawingStore
+    } catch {
+      return emptyDrawingStore
+    }
+  })
+  const [drawingHistory, setDrawingHistory] = useState<{ past: Drawing[][]; future: Drawing[][] }>({ past: [], future: [] })
   const [note, setNote] = useState('')
   const [records, setRecords] = useState(initialRecords)
   const [fontScale, setFontScale] = useState<FontScale>(() => {
@@ -198,6 +212,8 @@ export default function App() {
   const priceChangePercent = referenceClose ? priceChange / referenceClose * 100 : 0
   const displayName = instrument.name || instrument.symbol
   const adjustmentLabel = adjustmentLabels[adjustment]
+  const workspaceKey = `${instrument.key}::${workspace}`
+  const drawings = drawingStore.workspaces[workspaceKey] ?? []
   const handleHoverBar = useCallback((bar: StockBar | null) => setHoverBar(bar), [])
 
   const displayDate = useMemo(() => {
@@ -222,6 +238,14 @@ export default function App() {
   useEffect(() => {
     window.localStorage.setItem('dashboard-indicators-v1', JSON.stringify(indicators))
   }, [indicators])
+
+  useEffect(() => {
+    window.localStorage.setItem('dashboard-drawings-v1', JSON.stringify(drawingStore))
+  }, [drawingStore])
+
+  useEffect(() => {
+    setDrawingHistory({ past: [], future: [] })
+  }, [workspaceKey])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -320,6 +344,42 @@ export default function App() {
     setActiveSymbol(value)
   }
 
+  const replaceWorkspaceDrawings = useCallback((next: Drawing[]) => {
+    setDrawingStore((current) => ({
+      version: 1,
+      workspaces: { ...current.workspaces, [workspaceKey]: next },
+    }))
+  }, [workspaceKey])
+
+  const commitDrawings = useCallback((next: Drawing[]) => {
+    setDrawingHistory((current) => ({ past: [...current.past.slice(-79), drawings], future: [] }))
+    replaceWorkspaceDrawings(next)
+  }, [drawings, replaceWorkspaceDrawings])
+
+  const undoDrawing = () => {
+    setDrawingHistory((current) => {
+      const previous = current.past.at(-1)
+      if (!previous) {
+        notify('没有可撤销的画线操作')
+        return current
+      }
+      replaceWorkspaceDrawings(previous)
+      return { past: current.past.slice(0, -1), future: [drawings, ...current.future] }
+    })
+  }
+
+  const redoDrawing = () => {
+    setDrawingHistory((current) => {
+      const next = current.future[0]
+      if (!next) {
+        notify('没有可重做的画线操作')
+        return current
+      }
+      replaceWorkspaceDrawings(next)
+      return { past: [...current.past, drawings], future: current.future.slice(1) }
+    })
+  }
+
   const addRecord = () => {
     const body = note.trim()
     if (!body) {
@@ -348,7 +408,7 @@ export default function App() {
         <div className="brand" aria-label="研判看板">
           <span className="brand-mark">研</span>
           <span className="brand-name">研判</span>
-          <span className="brand-phase">P3</span>
+          <span className="brand-phase">P4</span>
         </div>
 
         <form className="symbol-search" onSubmit={submitSymbol}>
@@ -470,6 +530,14 @@ export default function App() {
         <button className={`toolbar-toggle${indicatorOpen ? ' is-active' : ''}`} onClick={() => setIndicatorOpen((value) => !value)}>
           指标设置
         </button>
+        <label className="inline-select snap-select">
+          <span>吸附 · {snapMode === 'off' ? '关' : snapMode === 'weak' ? '弱' : '强'}</span>
+          <select aria-label="画线吸附" value={snapMode} onChange={(event) => setSnapMode(event.target.value as 'off' | 'weak' | 'strong')}>
+            <option value="off">关闭</option>
+            <option value="weak">弱</option>
+            <option value="strong">强</option>
+          </select>
+        </label>
         <button className="toolbar-action" onClick={() => notify('图表已恢复到建议范围')}>适应画面</button>
         <div className="toolbar-spacer" />
         <span className={`data-status is-${marketState}`} title={`数据源：${marketMeta.source}`}>
@@ -537,15 +605,15 @@ export default function App() {
               data-tooltip={label}
               onClick={() => {
                 setActiveTool(label)
-                notify(`${label}为 P4 功能入口；P1 仅提供工具选择反馈`)
+                notify(label === '选择' ? '选择、移动并编辑画线对象' : `${label}已启用；在主图价格区域拖动创建`)
               }}
             >
               <Icon name={icon} />
             </button>
           ))}
           <span className="rail-divider" />
-          <button aria-label="撤销" data-tooltip="撤销" onClick={() => notify('撤销')}><Icon name="undo" /></button>
-          <button aria-label="重做" data-tooltip="重做" onClick={() => notify('重做')}><Icon name="redo" /></button>
+          <button aria-label="撤销" data-tooltip="撤销" onClick={undoDrawing}><Icon name="undo" /></button>
+          <button aria-label="重做" data-tooltip="重做" onClick={redoDrawing}><Icon name="redo" /></button>
         </aside>
 
         <section className="chart-region">
@@ -569,11 +637,17 @@ export default function App() {
             <ChartWorkbench
               bars={bars}
               instrumentLabel={displayName}
+              symbol={instrument.key}
+              market={instrument.market}
               timeframe={timeframe}
               logPrice={logPrice}
               profileVisible={profileVisible && !cleanMode}
               cleanMode={cleanMode}
               indicators={indicators}
+              activeTool={activeTool}
+              snapMode={snapMode}
+              drawings={drawings}
+              onCommitDrawings={commitDrawings}
               fontScale={fontScale}
               onHoverBar={handleHoverBar}
               onSelectBar={(bar) => {
