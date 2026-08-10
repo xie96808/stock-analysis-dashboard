@@ -901,6 +901,102 @@ button {
   white-space: nowrap;
 }
 
+.chip-cost-panel {
+  position: absolute;
+  top: 44px;
+  left: 14px;
+  z-index: 8;
+  width: 238px;
+  padding: 11px;
+  border: 1px solid rgba(86, 105, 155, 0.26);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 12px 32px rgba(31, 40, 62, 0.12);
+  pointer-events: none;
+}
+
+.chip-cost-panel header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chip-cost-panel header div,
+.chip-cost-panel header b {
+  display: flex;
+  flex-direction: column;
+}
+
+.chip-cost-panel header span,
+.chip-cost-panel header small {
+  color: #7c8491;
+  font-size: 9px;
+}
+
+.chip-cost-panel header strong {
+  margin-top: 2px;
+  color: #353c48;
+  font-size: 12px;
+}
+
+.chip-cost-panel header b {
+  align-items: flex-end;
+  color: #d95469;
+  font-size: 18px;
+}
+
+.chip-distribution {
+  display: flex;
+  min-height: 58px;
+  flex-direction: column-reverse;
+  justify-content: center;
+  gap: 1px;
+  margin: 9px 0;
+}
+
+.chip-distribution i {
+  display: block;
+  height: 2px;
+  min-width: 2px;
+}
+
+.chip-distribution .is-profit {
+  background: linear-gradient(90deg, #597bd5, #7ca0ef);
+}
+
+.chip-distribution .is-loss {
+  background: linear-gradient(90deg, #d65a70, #ee95a5);
+}
+
+.chip-cost-panel dl {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.chip-cost-panel dl div {
+  display: flex;
+  justify-content: space-between;
+  color: #68717e;
+  font-size: 10px;
+}
+
+.chip-cost-panel dd {
+  margin: 0;
+  color: #303744;
+  font-weight: 650;
+}
+
+.chip-cost-panel p {
+  margin: 8px 0 0;
+  padding-top: 7px;
+  border-top: 1px solid #e8ebf0;
+  color: #9097a3;
+  font-size: 8px;
+  line-height: 1.4;
+}
+
 .drawing-overlay {
   position: absolute;
   inset: 0;

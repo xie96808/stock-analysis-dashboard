@@ -1,7 +1,7 @@
 {
   "name": "stock-analysis-dashboard",
   "private": true,
-  "version": "0.7.0",
+  "version": "1.0.0",
   "description": "TradingView-inspired local technical-analysis dashboard for China A-shares and Hong Kong stocks.",
   "license": "MIT",
   "type": "module",
@@ -13,7 +13,9 @@
     "preview": "vite preview --host 127.0.0.1",
     "typecheck": "tsc -b --pretty false",
     "test:frontend": "vitest run",
-    "test:backend": ".venv/bin/python -m pytest backend/tests -q"
+    "test:backend": ".venv/bin/python -m pytest backend/tests -q",
+    "check": "bash ./scripts/check.sh",
+    "release:bundle": "bash ./scripts/package-release.sh"
   },
   "dependencies": {
     "html-to-image": "^1.11.13",
