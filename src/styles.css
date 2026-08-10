@@ -46,6 +46,7 @@ button {
 }
 
 .app-shell {
+  position: relative;
   display: grid;
   grid-template-rows: 56px 76px 44px minmax(0, 1fr) 28px;
   width: 100vw;
@@ -53,6 +54,92 @@ button {
   min-width: 1080px;
   min-height: 700px;
   background: var(--bg);
+}
+
+.indicator-popover {
+  position: absolute;
+  top: 171px;
+  right: calc(var(--journal-width, 326px) + 20px);
+  z-index: 24;
+  display: grid;
+  width: 340px;
+  gap: 9px;
+  padding: 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 16px 45px rgba(27, 34, 48, 0.16);
+}
+
+.indicator-popover-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.indicator-popover-heading div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.indicator-popover-heading span,
+.indicator-hint {
+  color: var(--muted-2);
+  font-size: 11px;
+}
+
+.indicator-popover-heading strong {
+  font-size: 15px;
+}
+
+.indicator-popover-heading button {
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.indicator-check {
+  display: grid;
+  grid-template-columns: 18px 58px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: #3f4653;
+  font-size: 13px;
+}
+
+.indicator-check.compact {
+  grid-template-columns: 18px 1fr;
+}
+
+.indicator-check.macd-config {
+  grid-template-columns: 18px 58px repeat(3, 1fr);
+}
+
+.indicator-check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--blue);
+}
+
+.indicator-check input:not([type="checkbox"]) {
+  min-width: 0;
+  height: 30px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  outline: 0;
+  color: var(--text);
+  background: #f8f9fb;
+}
+
+.indicator-check input:not([type="checkbox"]):focus {
+  border-color: #aebee9;
+  background: #fff;
 }
 
 .app-header,

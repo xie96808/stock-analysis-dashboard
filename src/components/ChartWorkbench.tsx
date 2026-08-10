@@ -16,7 +16,19 @@ import {
   type UTCTimestamp,
   type WhitespaceData,
 } from 'lightweight-charts'
-import { calculateMacd, type StockBar } from '../data/fixture'
+import { calculateMacd, movingAverage, type StockBar } from '../data/fixture'
+
+export type IndicatorConfig = {
+  maEnabled: boolean
+  maPeriods: number[]
+  emaEnabled: boolean
+  emaPeriod: number
+  volumeEnabled: boolean
+  macdEnabled: boolean
+  macdFast: number
+  macdSlow: number
+  macdSignal: number
+}
 
 type Props = {
   bars: StockBar[]
@@ -25,6 +37,7 @@ type Props = {
   logPrice: boolean
   profileVisible: boolean
   cleanMode: boolean
+  indicators: IndicatorConfig
   fontScale: 'standard' | 'large' | 'xlarge'
   onHoverBar: (bar: StockBar | null) => void
   onSelectBar: (bar: StockBar) => void
@@ -115,6 +128,8 @@ export function ChartWorkbench({
   timeframe,
   logPrice,
   profileVisible,
+  cleanMode,
+  indicators,
   fontScale,
   onHoverBar,
   onSelectBar,
@@ -125,7 +140,10 @@ export function ChartWorkbench({
   const [geometry, setGeometry] = useState<OverlayGeometry>({ profile: [], mainPaneHeight: 420 })
 
   const byTime = useMemo(() => new Map(bars.map((bar) => [timeKey(chartTime(bar.date)), bar])), [bars])
-  const macd = useMemo(() => calculateMacd(bars), [bars])
+  const macd = useMemo(
+    () => calculateMacd(bars, indicators.macdFast, indicators.macdSlow, indicators.macdSignal),
+    [bars, indicators.macdFast, indicators.macdSignal, indicators.macdSlow],
+  )
   const profileSource = useMemo(() => visualProfile(bars), [bars])
   const latestBar = bars.at(-1)
   const latestMacd = macd.at(-1)
@@ -209,6 +227,34 @@ export function ChartWorkbench({
     candleData.push(...futureDates.map((date) => ({ time: businessDay(date) })))
     candleSeries.setData(candleData)
 
+    if (!cleanMode && indicators.maEnabled) {
+      const palette = ['#20242c', '#d79b27', '#e05a76', '#3eaa70', '#8157c7']
+      indicators.maPeriods.forEach((period, paletteIndex) => {
+        const values = movingAverage(bars, period)
+        const series = chart.addSeries(LineSeries, {
+          color: palette[paletteIndex % palette.length],
+          lineWidth: 1,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+        })
+        series.setData(values.flatMap((value, index) => value == null ? [] : [{ time: chartTime(bars[index].date), value }]))
+      })
+    }
+
+    if (!cleanMode && indicators.emaEnabled) {
+      const values = movingAverage(bars, indicators.emaPeriod, true)
+      const series = chart.addSeries(LineSeries, {
+        color: '#8b61d6',
+        lineWidth: 2,
+        lineStyle: LineStyle.Dashed,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+      })
+      series.setData(values.flatMap((value, index) => value == null ? [] : [{ time: chartTime(bars[index].date), value }]))
+    }
+
     if (futureDates.length && latestBar) {
       const futureSpaceSeries = chart.addSeries(LineSeries, {
         color: 'rgba(255,255,255,0)',
@@ -224,37 +270,45 @@ export function ChartWorkbench({
       ])
     }
 
-    const volumeSeries = chart.addSeries(HistogramSeries, {
+    let nextPane = 1
+    const volumePane = !cleanMode && indicators.volumeEnabled ? nextPane++ : null
+    const macdPane = !cleanMode && indicators.macdEnabled ? nextPane++ : null
+
+    if (volumePane != null) {
+      const volumeSeries = chart.addSeries(HistogramSeries, {
       priceFormat: { type: 'volume' },
       priceLineVisible: false,
       lastValueVisible: false,
       color: '#8a93a1',
       priceScaleId: 'vol',
-    }, 1)
-    volumeSeries.setData(bars.map((bar) => ({
-      time: chartTime(bar.date),
-      value: bar.volume,
-      color: bar.close >= bar.open ? '#d4d9e1' : '#333943',
-    })))
-    volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.16, bottom: 0 }, borderVisible: false })
+      }, volumePane)
+      volumeSeries.setData(bars.map((bar) => ({
+        time: chartTime(bar.date),
+        value: bar.volume,
+        color: bar.close >= bar.open ? '#d4d9e1' : '#333943',
+      })))
+      volumeSeries.priceScale().applyOptions({ scaleMargins: { top: 0.16, bottom: 0 }, borderVisible: false })
+    }
 
-    const macdHistogram = chart.addSeries(HistogramSeries, {
-      priceScaleId: 'macd', priceLineVisible: false, lastValueVisible: false,
-    }, 2)
-    macdHistogram.setData(macd.map((point) => ({
-      time: chartTime(point.date),
-      value: point.histogram,
-      color: point.histogram >= 0 ? '#e95b71' : '#32b7a5',
-    })))
-    const difSeries = chart.addSeries(LineSeries, {
-      priceScaleId: 'macd', color: '#e59c24', lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
-    }, 2)
-    difSeries.setData(macd.map((point) => ({ time: chartTime(point.date), value: point.dif })))
-    const deaSeries = chart.addSeries(LineSeries, {
-      priceScaleId: 'macd', color: '#566ee8', lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
-    }, 2)
-    deaSeries.setData(macd.map((point) => ({ time: chartTime(point.date), value: point.dea })))
-    macdHistogram.priceScale().applyOptions({ scaleMargins: { top: 0.14, bottom: 0.1 }, borderVisible: false })
+    if (macdPane != null) {
+      const macdHistogram = chart.addSeries(HistogramSeries, {
+        priceScaleId: 'macd', priceLineVisible: false, lastValueVisible: false,
+      }, macdPane)
+      macdHistogram.setData(macd.map((point) => ({
+        time: chartTime(point.date),
+        value: point.histogram,
+        color: point.histogram >= 0 ? '#e95b71' : '#32b7a5',
+      })))
+      const difSeries = chart.addSeries(LineSeries, {
+        priceScaleId: 'macd', color: '#e59c24', lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
+      }, macdPane)
+      difSeries.setData(macd.map((point) => ({ time: chartTime(point.date), value: point.dif })))
+      const deaSeries = chart.addSeries(LineSeries, {
+        priceScaleId: 'macd', color: '#566ee8', lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
+      }, macdPane)
+      deaSeries.setData(macd.map((point) => ({ time: chartTime(point.date), value: point.dea })))
+      macdHistogram.priceScale().applyOptions({ scaleMargins: { top: 0.14, bottom: 0.1 }, borderVisible: false })
+    }
 
     chartRef.current = chart
     candleRef.current = candleSeries
@@ -273,9 +327,10 @@ export function ChartWorkbench({
     }
 
     chart.timeScale().fitContent()
-    chart.panes()[0]?.setHeight(Math.round(host.clientHeight * 0.62))
-    chart.panes()[1]?.setHeight(Math.round(host.clientHeight * 0.15))
-    chart.panes()[2]?.setHeight(Math.round(host.clientHeight * 0.19))
+    const mainRatio = nextPane === 1 ? 0.94 : nextPane === 2 ? 0.76 : 0.62
+    chart.panes()[0]?.setHeight(Math.round(host.clientHeight * mainRatio))
+    if (volumePane != null) chart.panes()[volumePane]?.setHeight(Math.round(host.clientHeight * 0.15))
+    if (macdPane != null) chart.panes()[macdPane]?.setHeight(Math.round(host.clientHeight * 0.19))
     requestAnimationFrame(updateGeometry)
 
     chart.subscribeCrosshairMove((param) => {
@@ -295,9 +350,9 @@ export function ChartWorkbench({
 
     const observer = new ResizeObserver(() => {
       chart.resize(host.clientWidth, host.clientHeight)
-      chart.panes()[0]?.setHeight(Math.round(host.clientHeight * 0.62))
-      chart.panes()[1]?.setHeight(Math.round(host.clientHeight * 0.15))
-      chart.panes()[2]?.setHeight(Math.round(host.clientHeight * 0.19))
+      chart.panes()[0]?.setHeight(Math.round(host.clientHeight * mainRatio))
+      if (volumePane != null) chart.panes()[volumePane]?.setHeight(Math.round(host.clientHeight * 0.15))
+      if (macdPane != null) chart.panes()[macdPane]?.setHeight(Math.round(host.clientHeight * 0.19))
       requestAnimationFrame(updateGeometry)
     })
     observer.observe(host)
@@ -307,7 +362,7 @@ export function ChartWorkbench({
       chartRef.current = null
       candleRef.current = null
     }
-  }, [bars, byTime, fontScale, instrumentLabel, isMinute, latestBar, macd, onHoverBar, onSelectBar, profileSource, timeframe])
+  }, [bars, byTime, cleanMode, fontScale, indicators, instrumentLabel, isMinute, latestBar, macd, onHoverBar, onSelectBar, profileSource, timeframe])
 
   useEffect(() => {
     const series = candleRef.current
@@ -323,18 +378,18 @@ export function ChartWorkbench({
   return (
     <div className="chart-stage" aria-label={`${instrumentLabel}${timeframe}图表`}>
       <div ref={hostRef} className="chart-canvas" />
-      <div className="pane-label pane-label-volume" style={{ top: geometry.mainPaneHeight + 10 }}>
+      {!cleanMode && indicators.volumeEnabled && <div className="pane-label pane-label-volume" style={{ top: geometry.mainPaneHeight + 10 }}>
         <strong>VOL</strong>
         <span>{formatVolume(latestBar?.volume ?? 0)}</span>
         <span className="pane-label-muted">MA5 {formatVolume(averageVolume(bars, 5))}</span>
         <span className="pane-label-muted">MA10 {formatVolume(averageVolume(bars, 10))}</span>
-      </div>
-      <div className="pane-label pane-label-macd" style={{ top: geometry.mainPaneHeight + 124 }}>
-        <strong>MACD 12 26 9</strong>
+      </div>}
+      {!cleanMode && indicators.macdEnabled && <div className="pane-label pane-label-macd" style={{ top: geometry.mainPaneHeight + (indicators.volumeEnabled ? 124 : 10) }}>
+        <strong>MACD {indicators.macdFast} {indicators.macdSlow} {indicators.macdSignal}</strong>
         <span className="macd-orange">DIF {latestMacd?.dif.toFixed(2) ?? '--'}</span>
         <span className="macd-blue">DEA {latestMacd?.dea.toFixed(2) ?? '--'}</span>
         <span>柱 {latestMacd?.histogram.toFixed(2) ?? '--'}</span>
-      </div>
+      </div>}
 
       {profileVisible && (
         <div className="volume-profile" style={{ height: geometry.mainPaneHeight }} aria-label="可视区成交量分布">

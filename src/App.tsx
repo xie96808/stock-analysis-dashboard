@@ -10,7 +10,7 @@ import {
   type MarketQuoteResponse,
   type MarketTimeframe,
 } from './api/client'
-import { ChartWorkbench } from './components/ChartWorkbench'
+import { ChartWorkbench, type IndicatorConfig } from './components/ChartWorkbench'
 import { Icon } from './components/Icon'
 import { IntradayView } from './components/IntradayView'
 import { JournalCalendar } from './components/JournalCalendar'
@@ -136,6 +136,18 @@ const fallbackInstrument: MarketInstrument = {
   name: '中国铀业',
 }
 
+const defaultIndicators: IndicatorConfig = {
+  maEnabled: true,
+  maPeriods: [5, 10, 20, 30],
+  emaEnabled: false,
+  emaPeriod: 20,
+  volumeEnabled: true,
+  macdEnabled: true,
+  macdFast: 12,
+  macdSlow: 26,
+  macdSignal: 9,
+}
+
 export default function App() {
   const [bars, setBars] = useState<StockBar[]>(fixtureBars)
   const [instrument, setInstrument] = useState<MarketInstrument>(fallbackInstrument)
@@ -150,6 +162,15 @@ export default function App() {
   const [logPrice, setLogPrice] = useState(true)
   const [profileVisible, setProfileVisible] = useState(true)
   const [cleanMode, setCleanMode] = useState(false)
+  const [indicatorOpen, setIndicatorOpen] = useState(false)
+  const [indicators, setIndicators] = useState<IndicatorConfig>(() => {
+    try {
+      const saved = window.localStorage.getItem('dashboard-indicators-v1')
+      return saved ? { ...defaultIndicators, ...JSON.parse(saved) as Partial<IndicatorConfig> } : defaultIndicators
+    } catch {
+      return defaultIndicators
+    }
+  })
   const [journalOpen, setJournalOpen] = useState(true)
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [selectedJournalDate, setSelectedJournalDate] = useState('2026-08-09')
@@ -197,6 +218,10 @@ export default function App() {
   useEffect(() => {
     window.localStorage.setItem('dashboard-font-scale', fontScale)
   }, [fontScale])
+
+  useEffect(() => {
+    window.localStorage.setItem('dashboard-indicators-v1', JSON.stringify(indicators))
+  }, [indicators])
 
   useEffect(() => {
     const controller = new AbortController()
@@ -323,7 +348,7 @@ export default function App() {
         <div className="brand" aria-label="研判看板">
           <span className="brand-mark">研</span>
           <span className="brand-name">研判</span>
-          <span className="brand-phase">P2</span>
+          <span className="brand-phase">P3</span>
         </div>
 
         <form className="symbol-search" onSubmit={submitSymbol}>
@@ -442,6 +467,9 @@ export default function App() {
         <button className={`toolbar-toggle${cleanMode ? ' is-active' : ''}`} onClick={() => setCleanMode((value) => !value)}>
           纯净模式
         </button>
+        <button className={`toolbar-toggle${indicatorOpen ? ' is-active' : ''}`} onClick={() => setIndicatorOpen((value) => !value)}>
+          指标设置
+        </button>
         <button className="toolbar-action" onClick={() => notify('图表已恢复到建议范围')}>适应画面</button>
         <div className="toolbar-spacer" />
         <span className={`data-status is-${marketState}`} title={`数据源：${marketMeta.source}`}>
@@ -452,6 +480,52 @@ export default function App() {
           研究记录
         </button>
       </section>
+
+      {indicatorOpen && (
+        <section className="indicator-popover" aria-label="指标参数设置">
+          <div className="indicator-popover-heading">
+            <div><span>指标参数</span><strong>主图与副图</strong></div>
+            <button onClick={() => setIndicators(defaultIndicators)}>恢复默认</button>
+          </div>
+          <label className="indicator-check">
+            <input type="checkbox" checked={indicators.maEnabled} onChange={(event) => setIndicators((current) => ({ ...current, maEnabled: event.target.checked }))} />
+            <span>MA</span>
+            <input
+              aria-label="MA周期"
+              value={indicators.maPeriods.join(',')}
+              onChange={(event) => {
+                const periods = event.target.value.split(',').map(Number).filter((value) => Number.isInteger(value) && value > 0 && value <= 500)
+                if (periods.length) setIndicators((current) => ({ ...current, maPeriods: periods.slice(0, 6) }))
+              }}
+            />
+          </label>
+          <label className="indicator-check">
+            <input type="checkbox" checked={indicators.emaEnabled} onChange={(event) => setIndicators((current) => ({ ...current, emaEnabled: event.target.checked }))} />
+            <span>EMA</span>
+            <input aria-label="EMA周期" type="number" min="2" max="500" value={indicators.emaPeriod} onChange={(event) => setIndicators((current) => ({ ...current, emaPeriod: Number(event.target.value) || 20 }))} />
+          </label>
+          <label className="indicator-check compact">
+            <input type="checkbox" checked={indicators.volumeEnabled} onChange={(event) => setIndicators((current) => ({ ...current, volumeEnabled: event.target.checked }))} />
+            <span>VOL 成交量</span>
+          </label>
+          <label className="indicator-check macd-config">
+            <input type="checkbox" checked={indicators.macdEnabled} onChange={(event) => setIndicators((current) => ({ ...current, macdEnabled: event.target.checked }))} />
+            <span>MACD</span>
+            {(['macdFast', 'macdSlow', 'macdSignal'] as const).map((key) => (
+              <input
+                key={key}
+                aria-label={key === 'macdFast' ? 'MACD快线' : key === 'macdSlow' ? 'MACD慢线' : 'MACD信号线'}
+                type="number"
+                min="2"
+                max="200"
+                value={indicators[key]}
+                onChange={(event) => setIndicators((current) => ({ ...current, [key]: Number(event.target.value) || defaultIndicators[key] }))}
+              />
+            ))}
+          </label>
+          <span className="indicator-hint">拖动副图分隔线可调整面板高度；全部面板共享时间轴与十字光标。</span>
+        </section>
+      )}
 
       <main className={`workspace${journalOpen ? ' has-journal' : ''}`}>
         <aside className="drawing-rail" aria-label="画图工具">
@@ -499,6 +573,7 @@ export default function App() {
               logPrice={logPrice}
               profileVisible={profileVisible && !cleanMode}
               cleanMode={cleanMode}
+              indicators={indicators}
               fontScale={fontScale}
               onHoverBar={handleHoverBar}
               onSelectBar={(bar) => {

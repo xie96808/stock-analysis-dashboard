@@ -134,7 +134,7 @@ export function createFutureDates() {
   return tradingDates('2026-08-10', '2027-01-08')
 }
 
-function ema(values: number[], period: number) {
+export function ema(values: number[], period: number) {
   const smoothing = 2 / (period + 1)
   const result: number[] = []
   let previous = values[0] ?? 0
@@ -145,12 +145,21 @@ function ema(values: number[], period: number) {
   return result
 }
 
-export function calculateMacd(bars: StockBar[]): MacdPoint[] {
+export function movingAverage(bars: StockBar[], period: number, exponential = false) {
+  if (exponential) return ema(bars.map((bar) => bar.close), period)
+  return bars.map((_, index) => {
+    if (index + 1 < period) return null
+    const window = bars.slice(index + 1 - period, index + 1)
+    return window.reduce((sum, bar) => sum + bar.close, 0) / period
+  })
+}
+
+export function calculateMacd(bars: StockBar[], fastPeriod = 12, slowPeriod = 26, signalPeriod = 9): MacdPoint[] {
   const closes = bars.map((bar) => bar.close)
-  const fast = ema(closes, 12)
-  const slow = ema(closes, 26)
+  const fast = ema(closes, fastPeriod)
+  const slow = ema(closes, slowPeriod)
   const dif = fast.map((value, index) => value - slow[index])
-  const dea = ema(dif, 9)
+  const dea = ema(dif, signalPeriod)
 
   return bars.map((bar, index) => ({
     date: bar.date,
