@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"
     service: str
-    phase: Literal["P6"] = "P6"
+    phase: Literal["P7"] = "P7"
     version: str
     timestamp: datetime
 

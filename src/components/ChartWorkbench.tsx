@@ -20,6 +20,7 @@ import { calculateMacd, movingAverage, type StockBar } from '../data/fixture'
 import type { Drawing } from '../drawings/model'
 import { DrawingLayer } from './DrawingLayer'
 import { calculateVolumeProfile } from '../profile/calculate'
+import { ChipCostPanel } from './ChipCostPanel'
 
 export type IndicatorConfig = {
   maEnabled: boolean
@@ -40,9 +41,12 @@ type Props = {
   market: 'CN' | 'HK'
   timeframe: string
   logPrice: boolean
+  percentPrice: boolean
   profileVisible: boolean
   profileMode: 'overlay' | 'dock' | 'hidden'
   profileWidth: number
+  chipVisible: boolean
+  candleTheme: 'mono' | 'cn'
   cleanMode: boolean
   indicators: IndicatorConfig
   activeTool: string
@@ -94,7 +98,7 @@ function formatTime(time: Time) {
   return `${time.year}-${String(time.month).padStart(2, '0')}-${String(time.day).padStart(2, '0')}`
 }
 
-function createFutureTradingDates(after: string, count = 130) {
+function createFutureTradingDates(after: string, count = 270) {
   const cursor = new Date(`${after.slice(0, 10)}T00:00:00Z`)
   const values: string[] = []
   while (values.length < count) {
@@ -124,9 +128,12 @@ export function ChartWorkbench({
   market,
   timeframe,
   logPrice,
+  percentPrice,
   profileVisible,
   profileMode,
   profileWidth,
+  chipVisible,
+  candleTheme,
   cleanMode,
   indicators,
   activeTool,
@@ -221,12 +228,12 @@ export function ChartWorkbench({
     })
 
     const candleSeries = chart.addSeries(CandlestickSeries, {
-      upColor: '#ffffff',
-      downColor: '#17191f',
-      borderUpColor: '#17191f',
-      borderDownColor: '#17191f',
-      wickUpColor: '#17191f',
-      wickDownColor: '#17191f',
+      upColor: candleTheme === 'cn' ? '#e65b70' : '#ffffff',
+      downColor: candleTheme === 'cn' ? '#2eaa7b' : '#17191f',
+      borderUpColor: candleTheme === 'cn' ? '#e65b70' : '#17191f',
+      borderDownColor: candleTheme === 'cn' ? '#2eaa7b' : '#17191f',
+      wickUpColor: candleTheme === 'cn' ? '#e65b70' : '#17191f',
+      wickDownColor: candleTheme === 'cn' ? '#2eaa7b' : '#17191f',
       priceLineVisible: false,
       lastValueVisible: true,
     })
@@ -410,18 +417,18 @@ export function ChartWorkbench({
       chartRef.current = null
       candleRef.current = null
     }
-  }, [anchoredRange, bars, byTime, cleanMode, fontScale, indicators, instrumentLabel, isMinute, latestBar, logPrice, macd, onHoverBar, onSelectBar, timeframe])
+  }, [anchoredRange, bars, byTime, candleTheme, cleanMode, fontScale, indicators, instrumentLabel, isMinute, latestBar, logPrice, macd, onHoverBar, onSelectBar, timeframe])
 
   useEffect(() => {
     const series = candleRef.current
     const chart = chartRef.current
     if (!series || !chart) return
-    series.priceScale().applyOptions({ mode: logPrice ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal })
+    series.priceScale().applyOptions({ mode: percentPrice ? PriceScaleMode.Percentage : logPrice ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal })
     requestAnimationFrame(() => {
       chart.timeScale().scrollToPosition(isMinute ? 3 : 6, false)
       window.dispatchEvent(new Event('resize'))
     })
-  }, [isMinute, logPrice])
+  }, [isMinute, logPrice, percentPrice])
 
   const profileLevels = useMemo(() => {
     const source = [
@@ -455,6 +462,7 @@ export function ChartWorkbench({
         drawings={drawings}
         onCommit={onCommitDrawings}
       />
+      <ChipCostPanel bars={bars} currentPrice={latestBar?.close ?? 0} visible={chipVisible && !cleanMode && market === 'CN'} />
       {!cleanMode && indicators.volumeEnabled && <div className="pane-label pane-label-volume" style={{ top: geometry.mainPaneHeight + 10 }}>
         <strong>VOL</strong>
         <span>{formatVolume(latestBar?.volume ?? 0)}</span>

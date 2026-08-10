@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
   appendJournalRevision,
   createJournalRecord,
@@ -22,8 +22,7 @@ import {
   type MarketQuoteResponse,
   type MarketTimeframe,
 } from './api/client'
-import { toPng } from 'html-to-image'
-import ReactMarkdown from 'react-markdown'
+import { toBlob, toPng } from 'html-to-image'
 import { ChartWorkbench, type IndicatorConfig } from './components/ChartWorkbench'
 import { Icon } from './components/Icon'
 import { IntradayView } from './components/IntradayView'
@@ -31,6 +30,12 @@ import { JournalCalendar } from './components/JournalCalendar'
 import { fixtureBars, type IntradayPoint, type StockBar } from './data/fixture'
 import { emptyDrawingStore, type Drawing, type DrawingStore } from './drawings/model'
 import './styles.css'
+
+const LazyMarkdown = lazy(() => import('react-markdown'))
+
+function MarkdownView({ children }: { children: string }) {
+  return <Suspense fallback={<span>{children}</span>}><LazyMarkdown>{children}</LazyMarkdown></Suspense>
+}
 
 const timeframes = ['1分', '5分', '15分', '30分', '60分', '日K', '周K', '月K']
 
@@ -207,8 +212,10 @@ export default function App() {
   const [marketMeta, setMarketMeta] = useState({ source: 'deterministic-fixture', cached: false, delayed: true })
   const [hoverBar, setHoverBar] = useState<StockBar | null>(null)
   const [logPrice, setLogPrice] = useState(true)
+  const [percentPrice, setPercentPrice] = useState(false)
   const [profileMode, setProfileMode] = useState<'overlay' | 'dock' | 'hidden'>('overlay')
   const [profileWidth, setProfileWidth] = useState(31)
+  const [chipVisible, setChipVisible] = useState(false)
   const [cleanMode, setCleanMode] = useState(false)
   const [indicatorOpen, setIndicatorOpen] = useState(false)
   const [indicators, setIndicators] = useState<IndicatorConfig>(() => {
@@ -228,6 +235,7 @@ export default function App() {
   const [timeframe, setTimeframe] = useState('日K')
   const [activeTool, setActiveTool] = useState('选择')
   const [snapMode, setSnapMode] = useState<'off' | 'weak' | 'strong'>('weak')
+  const [candleTheme, setCandleTheme] = useState<'mono' | 'cn'>('mono')
   const [workspace, setWorkspace] = useState('主分析')
   const [drawingStore, setDrawingStore] = useState<DrawingStore>(() => {
     try {
@@ -315,6 +323,17 @@ export default function App() {
   }, [drawingStore])
 
   useEffect(() => {
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (!event.altKey) return
+      if (event.key === '1') { setLogPrice(false); setPercentPrice(false) }
+      if (event.key === '2') { setLogPrice(true); setPercentPrice(false) }
+      if (event.key === '3') { setLogPrice(false); setPercentPrice(true) }
+    }
+    window.addEventListener('keydown', handleShortcut)
+    return () => window.removeEventListener('keydown', handleShortcut)
+  }, [])
+
+  useEffect(() => {
     setDrawingHistory({ past: [], future: [] })
   }, [workspaceKey])
 
@@ -351,7 +370,7 @@ export default function App() {
       getMarketBars(activeSymbol, {
         timeframe: selectedTimeframe,
         adjustment,
-        limit: selectedTimeframe.endsWith('m') ? 640 : 520,
+        limit: selectedTimeframe.endsWith('m') ? 640 : 2000,
       }, controller.signal),
       getMarketQuote(activeSymbol, controller.signal).catch(() => null),
     ])
@@ -481,7 +500,7 @@ export default function App() {
         thesis_markdown: body,
         market_data_as_of: lastBar.date,
         chart_state: {
-          timeframe, adjustment, logPrice, profileMode, profileWidth, cleanMode, workspace,
+          timeframe, adjustment, logPrice, percentPrice, profileMode, profileWidth, cleanMode, workspace,
           historicalCutoff, visibleBars: chartBars.length,
         },
         drawings: drawings as unknown as Array<Record<string, unknown>>,
@@ -543,6 +562,7 @@ export default function App() {
     }
     const state = revision.chart_state
     if (typeof state.logPrice === 'boolean') setLogPrice(state.logPrice)
+    if (typeof state.percentPrice === 'boolean') setPercentPrice(state.percentPrice)
     if (typeof state.timeframe === 'string' && timeframes.includes(state.timeframe)) setTimeframe(state.timeframe)
     if (state.adjustment === 'qfq' || state.adjustment === 'none' || state.adjustment === 'hfq') setAdjustment(state.adjustment)
     if (mode === 'historical') setHistoricalCutoff(revision.market_data_as_of.slice(0, 10))
@@ -560,13 +580,44 @@ export default function App() {
     notify('记录已移入回收站，可恢复')
   }
 
+  const exportChartPng = async () => {
+    const target = document.querySelector<HTMLElement>('.chart-region')
+    if (!target) return
+    try {
+      notify('正在生成2×高清PNG…')
+      const blob = await toBlob(target, {
+        pixelRatio: 2,
+        backgroundColor: '#ffffff',
+        cacheBust: true,
+        filter: (node) => !(node instanceof HTMLElement && node.classList.contains('drawing-inspector')),
+      })
+      if (!blob) throw new Error('图表像素读取为空')
+      const objectUrl = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.download = `${instrument.symbol}-${timeframe}-${lastBar.date.slice(0, 10)}.png`
+      link.href = objectUrl
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000)
+      notify('高清图表PNG已导出')
+    } catch (error) {
+      notify(error instanceof Error ? `截图导出失败：${error.message}` : '截图导出失败')
+    }
+  }
+
+  const toggleFullscreen = async () => {
+    if (document.fullscreenElement) await document.exitFullscreen()
+    else await document.documentElement.requestFullscreen()
+  }
+
   return (
     <div className="app-shell" data-font-scale={fontScale}>
       <header className="app-header">
         <div className="brand" aria-label="研判看板">
           <span className="brand-mark">研</span>
           <span className="brand-name">研判</span>
-          <span className="brand-phase">P6</span>
+          <span className="brand-phase">v1.0</span>
         </div>
 
         <form className="symbol-search" onSubmit={submitSymbol}>
@@ -609,9 +660,9 @@ export default function App() {
               <option>短线计划</option>
             </select>
           </label>
-          <button className="icon-button" title="导出截图" onClick={() => notify('高清截图导出将在 P7 接入')}><Icon name="camera" /></button>
-          <button className="icon-button" title="全屏" onClick={() => notify('全屏模式将在视觉确认后接入')}><Icon name="fullscreen" /></button>
-          <button className="icon-button" title="设置" onClick={() => notify('设置面板占位')}><Icon name="settings" /></button>
+          <button className="icon-button" title="导出高清PNG" aria-label="导出高清PNG" onClick={exportChartPng}><Icon name="camera" /></button>
+          <button className="icon-button" title="全屏" onClick={toggleFullscreen}><Icon name="fullscreen" /></button>
+          <button className="icon-button" title={`K线配色：${candleTheme === 'mono' ? '黑白' : '红涨绿跌'}`} onClick={() => { setCandleTheme((value) => value === 'mono' ? 'cn' : 'mono'); notify('K线配色已切换') }}><Icon name="settings" /></button>
         </div>
       </header>
 
@@ -640,8 +691,9 @@ export default function App() {
         </div>
 
         <div className="axis-toggle" aria-label="价格坐标">
-          <button className={!logPrice ? 'is-active' : ''} onClick={() => setLogPrice(false)}>普通</button>
-          <button className={logPrice ? 'is-active' : ''} onClick={() => setLogPrice(true)}>Log</button>
+          <button className={!logPrice && !percentPrice ? 'is-active' : ''} onClick={() => { setLogPrice(false); setPercentPrice(false) }}>普通</button>
+          <button className={logPrice ? 'is-active' : ''} onClick={() => { setLogPrice(true); setPercentPrice(false) }}>Log</button>
+          <button className={percentPrice ? 'is-active' : ''} onClick={() => { setLogPrice(false); setPercentPrice(true) }}>%</button>
         </div>
       </section>
 
@@ -693,6 +745,10 @@ export default function App() {
         {profileMode !== 'hidden' && <label className="profile-width-control" title={`分布宽度 ${profileWidth}%`}>
           <span>宽</span><input aria-label="成交量分布宽度" type="range" min="18" max="42" value={profileWidth} onChange={(event) => setProfileWidth(Number(event.target.value))} />
         </label>}
+        <button className={`toolbar-toggle${chipVisible ? ' is-active' : ''}`} onClick={() => {
+          if (instrument.market !== 'CN') return notify('筹码成本估算第一版仅对A股启用')
+          setChipVisible((value) => !value)
+        }}>筹码估算</button>
         <button className={`toolbar-toggle${cleanMode ? ' is-active' : ''}`} onClick={() => setCleanMode((value) => !value)}>
           纯净模式
         </button>
@@ -790,7 +846,7 @@ export default function App() {
             <div>
               <strong>{displayName} · {selectedDay ? `${selectedDay.date.slice(0, 10)} 分时` : timeframe}</strong>
               {!selectedDay && <span>{adjustmentLabel}</span>}
-              {!selectedDay && <span className={logPrice ? 'log-badge is-log' : 'log-badge'}>{logPrice ? 'LOG' : '线性'}</span>}
+              {!selectedDay && <span className={logPrice ? 'log-badge is-log' : 'log-badge'}>{percentPrice ? '%' : logPrice ? 'LOG' : '线性'}</span>}
               {historicalCutoff && <button className="historical-badge" onClick={() => setHistoricalCutoff(null)}>当日视角 · 截止{historicalCutoff} ×</button>}
               {selectedDay && <span className="intraday-source">{intradayLoading ? '正在加载5分钟行情' : intradayPoints.length ? '真实5分钟行情' : '本地拟合预览'}</span>}
             </div>
@@ -798,7 +854,7 @@ export default function App() {
               {selectedDay ? (
                 <button className="back-to-daily" onClick={() => setSelectedDay(null)}>← 返回日K</button>
               ) : <span>工作区：{workspace}</span>}
-              <button onClick={() => notify('布局菜单占位')}><Icon name="more" /></button>
+              <button aria-label="布局菜单" onClick={() => notify('当前工作区布局已自动保存')}><Icon name="more" /></button>
             </div>
           </div>
           {selectedDay ? (
@@ -811,9 +867,12 @@ export default function App() {
               market={instrument.market}
               timeframe={timeframe}
               logPrice={logPrice}
+              percentPrice={percentPrice}
               profileVisible={profileMode !== 'hidden' && !cleanMode}
               profileMode={profileMode}
               profileWidth={profileWidth}
+              chipVisible={chipVisible}
+              candleTheme={candleTheme}
               cleanMode={cleanMode}
               indicators={indicators}
               activeTool={activeTool}
@@ -895,7 +954,7 @@ export default function App() {
                   <div className="record-copy">
                     <div className="record-meta"><time>{record.time}</time><span>{displayName}</span><span>v{record.version}</span><span>{record.status}</span></div>
                     <h3>{record.title}</h3>
-                    <div className="record-markdown"><ReactMarkdown>{record.body}</ReactMarkdown></div>
+                    <div className="record-markdown"><MarkdownView>{record.body}</MarkdownView></div>
                     <div className="record-actions">
                       {!trashOpen && <>
                         <button onClick={() => openRecord(record.id)}>查看快照</button>
@@ -959,12 +1018,12 @@ export default function App() {
               <div className={`snapshot-content${compareRevisions && previous ? ' is-comparing' : ''}`}>
                 <section>
                   {revision.screenshot_path ? <img src={`/api/journal/artifact?path=${encodeURIComponent(revision.screenshot_path)}`} alt={`v${revision.version}图表快照`} /> : <div className="snapshot-missing">该版本没有PNG快照</div>}
-                  <div className="snapshot-markdown"><ReactMarkdown>{revision.thesis_markdown}</ReactMarkdown></div>
+                  <div className="snapshot-markdown"><MarkdownView>{revision.thesis_markdown}</MarkdownView></div>
                 </section>
                 {compareRevisions && previous && <section>
                   <h3>v{previous.version} · {previous.title}</h3>
                   {previous.screenshot_path ? <img src={`/api/journal/artifact?path=${encodeURIComponent(previous.screenshot_path)}`} alt={`v${previous.version}图表快照`} /> : <div className="snapshot-missing">该版本没有PNG快照</div>}
-                  <div className="snapshot-markdown"><ReactMarkdown>{previous.thesis_markdown}</ReactMarkdown></div>
+                  <div className="snapshot-markdown"><MarkdownView>{previous.thesis_markdown}</MarkdownView></div>
                 </section>}
               </div>
               <footer>
@@ -981,7 +1040,7 @@ export default function App() {
 
       <footer className="status-bar">
         <span>工具：{activeTool}</span>
-        <span>坐标：{logPrice ? 'Log 价格' : '普通价格'}</span>
+        <span>坐标：{percentPrice ? '百分比' : logPrice ? 'Log 价格' : '普通价格'}</span>
         <span>时区：Asia/Shanghai</span>
         <span className={`api-state is-${apiState}`}>
           <i />{apiState === 'ready' ? `本地API · ${apiHealth?.version}` : apiState === 'connecting' ? '正在连接API' : '样例降级模式'}

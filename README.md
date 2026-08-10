@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- 阶段：P6 预测日志与历史追溯已完成，正在推进P7质量与第一版打包。
+- 阶段：第一版 `v1.0.0` 已完成；P0–P7全部通过自动与浏览器验收。
 - 运行形式：本机 Web 应用，桌面浏览器优先，平板横屏为第二优先级。
 - 设计基准：用户提供的 TradingView 截图与同花顺对比截图。
 - 核心需求：横轴按真实日期自由缩放和延伸；纵轴支持普通价格与 Log 价格切换。
@@ -31,6 +31,23 @@
 - [P5 用户验收单](./docs/P5_ACCEPTANCE_CHECKLIST.md)
 - [P6 验收报告](./docs/P6_REPORT.md)
 - [P6 用户验收单](./docs/P6_ACCEPTANCE_CHECKLIST.md)
+- [P7 / v1验收报告](./docs/P7_REPORT.md)
+- [P7 / v1用户验收单](./docs/P7_ACCEPTANCE_CHECKLIST.md)
+- [第一版总验收矩阵](./docs/FINAL_ACCEPTANCE.md)
+- [本地部署与发布](./docs/DEPLOYMENT.md)
+
+## v1.0 已实现
+
+- A股/港股代码识别，真实日线与分钟行情，周/月聚合及三种复权；
+- 1/5/15/30/60分钟、日/周/月K，普通/Log/百分比价格轴；
+- MA/EMA/VOL/MACD多Pane、参数编辑及纯净模式；
+- 水平线、趋势线、射线、通道、矩形、文字、自由画笔和荧光笔；
+- 金融坐标持久化、OHLC吸附、精确编辑、撤销/重做和命名工作区；
+- 动态可视区/锚定Volume Profile及POC/VAH/VAL；
+- 明确标注模型边界的A股筹码成本估算；
+- SQLite研究日志、不可覆盖revision、PNG快照、当日视角、版本对比与回收站；
+- 单条Markdown/PNG/JSON和带SHA-256的完整ZIP导入导出；
+- 每日备份30份、2×高清截图、可校验源码发布包。
 
 ## 本地运行
 
