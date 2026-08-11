@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createPaperTrade, getMarketBars } from './client'
+import { createPaperTrade, getMarketBars, searchInstruments } from './client'
 
 const response = {
   instrument: {
@@ -62,5 +62,18 @@ describe('market API client', () => {
     await expect(createPaperTrade({
       symbol: '001280', name: '样例股票', market: 'CN', side: 'buy', price: 1000, quantity: 1000,
     })).rejects.toThrow('模拟账户可用资金不足')
+  })
+
+  it('encodes Chinese instrument search and caps the requested suggestion count', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await searchInstruments('赤峰黄金', 5)
+
+    const [url] = fetchMock.mock.calls[0] as [string]
+    const parsed = new URL(url, 'http://localhost')
+    expect(parsed.pathname).toBe('/api/instruments/search')
+    expect(parsed.searchParams.get('q')).toBe('赤峰黄金')
+    expect(parsed.searchParams.get('limit')).toBe('5')
   })
 })

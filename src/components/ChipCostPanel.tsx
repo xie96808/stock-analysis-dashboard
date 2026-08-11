@@ -18,6 +18,8 @@ type Props = {
   priceScaleOffset: number
   currentY: number | null
   averageY: number | null
+  scaleMode: 'chart' | 'cost'
+  scaleRange: [number, number] | null
   isLatest: boolean
   onResetToLatest: () => void
 }
@@ -45,6 +47,8 @@ export function ChipCostPanel({
   priceScaleOffset,
   currentY,
   averageY,
+  scaleMode,
+  scaleRange,
   isLatest,
   onResetToLatest,
 }: Props) {
@@ -111,6 +115,11 @@ export function ChipCostPanel({
           <span>截至 {estimate.asOfDate}</span>
         </div>
         <div className="chip-heading-actions">
+          {scaleMode === 'cost' && scaleRange && (
+            <em className="chip-cost-axis" title="分钟价格范围过窄，筹码峰使用独立成本轴完整展示">
+              成本轴 {scaleRange[0].toFixed(2)}–{scaleRange[1].toFixed(2)}
+            </em>
+          )}
           <em>{qualityLabels[estimate.quality]}</em>
           {!isLatest && <button type="button" onClick={onResetToLatest}>恢复最新</button>}
           {!summaryVisible && (

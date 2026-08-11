@@ -8,7 +8,7 @@ import httpx
 from .aggregate import aggregate_bars
 from .base import MarketProvider, ProviderError
 from .cache import JsonCache
-from .models import Adjustment, BarPayload, BarsResponse, InstrumentPayload, QuoteResponse, Timeframe
+from .models import Adjustment, BarPayload, BarsResponse, InstrumentPayload, InstrumentSearchResult, QuoteResponse, Timeframe
 from .symbols import Instrument, normalize_symbol
 from .tencent import TencentProvider
 from .yahoo import YahooProvider
@@ -98,6 +98,22 @@ class MarketDataService:
 
     def provider_status(self) -> list[dict[str, Any]]:
         return [dict(self._provider_health[item.name], priority=index + 1) for index, item in enumerate(self.providers)]
+
+    async def search_instruments(self, query: str, limit: int = 5) -> list[InstrumentSearchResult]:
+        value = query.strip()
+        if not value:
+            return []
+        for provider in self.providers:
+            search = getattr(provider, "search_instruments", None)
+            if not callable(search):
+                continue
+            try:
+                results = await search(value, max(1, min(limit, 10)))
+                if results:
+                    return results
+            except (ProviderError, httpx.HTTPError, ValueError, KeyError, TypeError) as error:
+                self._record_provider_result(provider.name, error)
+        return []
 
     async def _fetch_bars(
         self,

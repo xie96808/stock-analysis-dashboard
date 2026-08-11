@@ -18,6 +18,16 @@ class InstrumentPayload(BaseModel):
     name: str | None = None
 
 
+class InstrumentSearchResult(BaseModel):
+    input: str
+    symbol: str
+    name: str
+    market: Literal["CN", "HK"]
+    exchange: Literal["SZSE", "SSE", "BSE", "HKEX"]
+    provider_symbol: str
+    asset_type: Literal["stock", "etf"]
+
+
 class BarPayload(BaseModel):
     time: str
     open: float

@@ -12,8 +12,11 @@ import {
   listJournalRecords,
   permanentlyDeleteJournalRecord,
   recycleJournalRecord,
+  resolveInstrument,
   restoreJournalRecord,
+  searchInstruments,
   type ApiHealth,
+  type InstrumentSuggestion,
   type JournalRecordDetail,
   type JournalRecordSummary,
   type MarketAdjustment,
@@ -43,6 +46,7 @@ import { marketSessionState } from './market/refreshSchedule'
 import { parseDrawingStore, parseIndicatorConfig, shanghaiDateKey } from './state/preferences'
 import { evaluateAlerts, parseAlertEvents, parseAlertRules, selectAlertBars, type AlertEvent, type AlertRule } from './alerts/model'
 import { parseWatchlist, upsertWatchlist, type WatchlistItem } from './watchlist/model'
+import { isCompleteMarketSymbol } from './search/model'
 import './styles.css'
 
 const LazyMarkdown = lazy(() => import('react-markdown'))
@@ -240,7 +244,11 @@ export default function App() {
   const [dailyAlertBars, setDailyAlertBars] = useState<StockBar[]>(fixtureBars)
   const [instrument, setInstrument] = useState<MarketInstrument>(fallbackInstrument)
   const [quote, setQuote] = useState<MarketQuoteResponse | null>(null)
-  const [symbolInput, setSymbolInput] = useState('001280')
+  const [symbolInput, setSymbolInput] = useState('')
+  const [symbolSuggestions, setSymbolSuggestions] = useState<InstrumentSuggestion[]>([])
+  const [symbolSearchOpen, setSymbolSearchOpen] = useState(false)
+  const [symbolSearchLoading, setSymbolSearchLoading] = useState(false)
+  const [symbolSuggestionIndex, setSymbolSuggestionIndex] = useState(0)
   const [activeSymbol, setActiveSymbol] = useState('001280')
   const [adjustment, setAdjustment] = useState<MarketAdjustment>('qfq')
   const [marketState, setMarketState] = useState<'loading' | 'ready' | 'fallback' | 'error'>('loading')
@@ -439,6 +447,37 @@ export default function App() {
   useEffect(() => {
     window.localStorage.setItem('dashboard-watchlist-v1', JSON.stringify(watchlist))
   }, [watchlist])
+
+  useEffect(() => {
+    const query = symbolInput.trim()
+    if (!query) {
+      setSymbolSuggestions([])
+      setSymbolSearchOpen(false)
+      setSymbolSearchLoading(false)
+      return
+    }
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => {
+      setSymbolSearchLoading(true)
+      searchInstruments(query, 5, controller.signal)
+        .then((results) => {
+          setSymbolSuggestions(results)
+          setSymbolSuggestionIndex(0)
+          setSymbolSearchOpen(true)
+        })
+        .catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === 'AbortError') return
+          setSymbolSuggestions([])
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setSymbolSearchLoading(false)
+        })
+    }, 180)
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
+    }
+  }, [symbolInput])
 
   useEffect(() => {
     const updateSession = () => setAutoRefreshSession(marketSessionState(new Date(), instrument.market))
@@ -683,14 +722,51 @@ export default function App() {
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [closeIntraday, selectedDay])
 
-  const submitSymbol = (event: FormEvent<HTMLFormElement>) => {
+  const loadSuggestion = useCallback((suggestion: InstrumentSuggestion) => {
+    setActiveSymbol(suggestion.input)
+    setSymbolInput('')
+    setSymbolSuggestions([])
+    setSymbolSearchOpen(false)
+    setSymbolSuggestionIndex(0)
+    notify(`正在加载${suggestion.name}（${suggestion.symbol}）`)
+  }, [notify])
+
+  const submitSymbol = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const value = symbolInput.trim()
     if (!value) {
       notify('请输入A股或港股代码')
       return
     }
-    setActiveSymbol(value)
+    const selected = symbolSuggestions[symbolSuggestionIndex] ?? symbolSuggestions[0]
+    if (selected) {
+      loadSuggestion(selected)
+      return
+    }
+    try {
+      if (isCompleteMarketSymbol(value)) {
+        const resolved = await resolveInstrument(value)
+        setActiveSymbol(resolved.provider_symbol)
+        setSymbolInput('')
+        setSymbolSuggestions([])
+        setSymbolSearchOpen(false)
+        notify(`正在加载${resolved.symbol}`)
+        return
+      }
+      const suggestions = await searchInstruments(value, 1)
+      if (suggestions[0]) {
+        loadSuggestion(suggestions[0])
+        return
+      }
+      const resolved = await resolveInstrument(value)
+      setActiveSymbol(resolved.provider_symbol)
+      setSymbolInput('')
+      setSymbolSuggestions([])
+      setSymbolSearchOpen(false)
+      notify(`正在加载${resolved.symbol}`)
+    } catch (error) {
+      notify(error instanceof Error ? `未找到“${value}”：${error.message}` : `未找到“${value}”`)
+    }
   }
 
   const addCurrentToWatchlist = () => {
@@ -711,7 +787,7 @@ export default function App() {
   }
 
   const selectWatchlistItem = (item: WatchlistItem) => {
-    setSymbolInput(item.symbol)
+    setSymbolInput('')
     setActiveSymbol(item.symbol)
     setWatchlistOpen(false)
     notify(`正在加载自选股：${item.name}`)
@@ -993,18 +1069,79 @@ export default function App() {
           <Icon name="search" />
           <input
             value={symbolInput}
-            onChange={(event) => setSymbolInput(event.target.value)}
+            onChange={(event) => {
+              setSymbolInput(event.target.value)
+              setSymbolSuggestions([])
+              setSymbolSearchOpen(Boolean(event.target.value.trim()))
+              setSymbolSuggestionIndex(0)
+            }}
+            onFocus={() => {
+              if (symbolInput.trim()) setSymbolSearchOpen(true)
+            }}
+            onBlur={() => window.setTimeout(() => setSymbolSearchOpen(false), 120)}
             onKeyDown={(event) => {
-              if (event.key !== 'Enter') return
-              event.preventDefault()
-              event.currentTarget.form?.requestSubmit()
+              if (event.key === 'ArrowDown' && symbolSuggestions.length) {
+                event.preventDefault()
+                setSymbolSearchOpen(true)
+                setSymbolSuggestionIndex((current) => (current + 1) % symbolSuggestions.length)
+              } else if (event.key === 'ArrowUp' && symbolSuggestions.length) {
+                event.preventDefault()
+                setSymbolSearchOpen(true)
+                setSymbolSuggestionIndex((current) => (current - 1 + symbolSuggestions.length) % symbolSuggestions.length)
+              } else if (event.key === 'Escape') {
+                setSymbolSearchOpen(false)
+              } else if (event.key === 'Enter') {
+                event.preventDefault()
+                event.currentTarget.form?.requestSubmit()
+              }
             }}
             aria-label="股票代码"
-            placeholder="A股 / 港股代码"
+            aria-autocomplete="list"
+            aria-expanded={symbolSearchOpen}
+            aria-controls="symbol-suggestions"
+            autoComplete="off"
+            placeholder="代码 / 名称"
           />
+          {symbolInput && (
+            <button
+              className="symbol-search-clear"
+              type="button"
+              aria-label="清空搜索"
+              title="清空搜索"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                setSymbolInput('')
+                setSymbolSuggestions([])
+                setSymbolSearchOpen(false)
+              }}
+            >×</button>
+          )}
           <button className="search-market" type="submit" title="加载代码">
             {marketState === 'loading' ? '…' : instrument.market === 'HK' ? 'HK' : instrument.exchange === 'SSE' ? 'SH' : instrument.exchange === 'BSE' ? 'BJ' : 'SZ'}
           </button>
+          {symbolSearchOpen && (
+            <div className="symbol-suggestions" id="symbol-suggestions" role="listbox" aria-label="标的联想">
+              {symbolSearchLoading && !symbolSuggestions.length ? (
+                <span className="symbol-suggestion-status">正在查找…</span>
+              ) : symbolSuggestions.length ? symbolSuggestions.map((suggestion, index) => (
+                <button
+                  key={`${suggestion.exchange}:${suggestion.symbol}`}
+                  type="button"
+                  role="option"
+                  aria-selected={index === symbolSuggestionIndex}
+                  className={index === symbolSuggestionIndex ? 'is-active' : ''}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setSymbolSuggestionIndex(index)}
+                  onClick={() => loadSuggestion(suggestion)}
+                >
+                  <span><strong>{suggestion.name}</strong><small>{suggestion.asset_type === 'etf' ? 'ETF' : suggestion.market === 'HK' ? '港股' : 'A股'}</small></span>
+                  <em>{suggestion.symbol}</em>
+                </button>
+              )) : (
+                <span className="symbol-suggestion-status">暂无匹配标的</span>
+              )}
+            </div>
+          )}
         </form>
 
         <nav className="header-nav" aria-label="工作区导航">
@@ -1209,7 +1346,10 @@ export default function App() {
         <section className="indicator-popover" aria-label="指标参数设置">
           <div className="indicator-popover-heading">
             <div><span>指标参数</span><strong>主图与副图</strong></div>
-            <button onClick={() => setIndicators(defaultIndicators)}>恢复默认</button>
+            <div className="indicator-popover-actions">
+              <button onClick={() => setIndicators(defaultIndicators)}>恢复默认</button>
+              <button className="indicator-popover-close" type="button" aria-label="关闭指标设置" title="关闭指标设置" onClick={() => setIndicatorOpen(false)}>×</button>
+            </div>
           </div>
           <label className="indicator-check">
             <input type="checkbox" checked={indicators.maEnabled} onChange={(event) => setIndicators((current) => ({ ...current, maEnabled: event.target.checked }))} />

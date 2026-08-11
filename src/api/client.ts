@@ -16,6 +16,16 @@ export type MarketInstrument = {
   name: string | null
 }
 
+export type InstrumentSuggestion = {
+  input: string
+  symbol: string
+  name: string
+  market: 'CN' | 'HK'
+  exchange: 'SZSE' | 'SSE' | 'BSE' | 'HKEX'
+  provider_symbol: string
+  asset_type: 'stock' | 'etf'
+}
+
 export type MarketBar = {
   time: string
   open: number
@@ -251,6 +261,11 @@ export function getDemoSnapshot(signal?: AbortSignal) {
 
 export function resolveInstrument(input: string, signal?: AbortSignal) {
   return requestJson<MarketInstrument>(`/api/instruments/resolve?input=${encodeURIComponent(input)}`, signal)
+}
+
+export function searchInstruments(query: string, limit = 5, signal?: AbortSignal) {
+  const search = new URLSearchParams({ q: query, limit: String(limit) })
+  return requestJson<InstrumentSuggestion[]>(`/api/instruments/search?${search}`, signal)
 }
 
 export function getMarketBars(

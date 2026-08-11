@@ -79,10 +79,16 @@ button {
   border-bottom: 1px solid var(--border);
 }
 
-.indicator-popover-heading div {
+.indicator-popover-heading > div:first-child {
   display: flex;
   flex-direction: column;
   gap: 2px;
+}
+
+.indicator-popover-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
 }
 
 .indicator-popover-heading span,
@@ -101,6 +107,26 @@ button {
   color: var(--blue);
   cursor: pointer;
   font-size: 12px;
+}
+
+.indicator-popover-heading .indicator-popover-close {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1;
+}
+
+.indicator-popover-heading .indicator-popover-close:hover,
+.indicator-popover-heading .indicator-popover-close:focus-visible {
+  border-color: #b8c5e8;
+  background: #f1f4fb;
+  color: var(--blue);
 }
 
 .indicator-check {
@@ -194,6 +220,7 @@ button {
 }
 
 .symbol-search {
+  position: relative;
   display: flex;
   width: 240px;
   height: 36px;
@@ -204,6 +231,103 @@ button {
   border-radius: 7px;
   background: #f8f9fb;
   color: var(--muted);
+}
+
+.symbol-search-clear {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: #e8ebf1;
+  color: #697181;
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.symbol-search-clear:hover,
+.symbol-search-clear:focus-visible {
+  background: #dce4f7;
+  color: var(--blue);
+}
+
+.symbol-suggestions {
+  position: absolute;
+  top: calc(100% + 7px);
+  left: 0;
+  z-index: 90;
+  display: grid;
+  width: 360px;
+  overflow: hidden;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.99);
+  box-shadow: 0 14px 38px rgba(24, 31, 45, 0.18);
+}
+
+.symbol-suggestions > button {
+  display: flex;
+  min-height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 7px 11px;
+  border: 0;
+  border-bottom: 1px solid #eef0f4;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+}
+
+.symbol-suggestions > button:last-child {
+  border-bottom: 0;
+}
+
+.symbol-suggestions > button:hover,
+.symbol-suggestions > button.is-active {
+  background: #edf2ff;
+}
+
+.symbol-suggestions > button span {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
+.symbol-suggestions > button strong {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.symbol-suggestions > button small {
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: #f0f2f6;
+  color: var(--muted-2);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.symbol-suggestions > button em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.symbol-suggestion-status {
+  padding: 13px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
 }
 
 .symbol-search:focus-within {
@@ -1141,6 +1265,15 @@ button {
   color: #7d8694;
   font-size: 9px;
   font-style: normal;
+}
+
+.chip-heading-actions .chip-cost-axis {
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: #eef3ff;
+  color: #315fb9;
+  font-style: normal;
+  font-weight: 700;
 }
 
 .chip-heading-actions button {

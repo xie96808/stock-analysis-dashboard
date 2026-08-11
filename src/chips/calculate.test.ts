@@ -47,4 +47,24 @@ describe('recursive chip cost estimate', () => {
     expect(result.quality).toBe('proxy')
     expect(result.turnoverCoverage).toBe(0)
   })
+
+  it('supports ETF-style fractional prices and provider turnover data', () => {
+    const etfBars: StockBar[] = Array.from({ length: 80 }, (_, index) => {
+      const close = 0.58 + Math.sin(index / 8) * 0.08 + index * 0.0015
+      return {
+        date: `2026-${String(4 + Math.floor(index / 28)).padStart(2, '0')}-${String(index % 28 + 1).padStart(2, '0')}`,
+        open: close - 0.006,
+        high: close + 0.018,
+        low: close - 0.015,
+        close,
+        volume: 300_000_000 + index * 1_000_000,
+        turnoverRate: 0.04 + index % 5 * 0.01,
+      }
+    })
+    const result = calculateChipCostEstimate(etfBars, etfBars.at(-1)!.close)
+    expect(result.quality).toBe('turnover')
+    expect(result.rows.filter((row) => row.weight > 0).length).toBeGreaterThan(24)
+    expect(result.averageCost).toBeGreaterThan(0.4)
+    expect(result.averageCost).toBeLessThan(1.2)
+  })
 })

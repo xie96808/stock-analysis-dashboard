@@ -1,8 +1,10 @@
 import asyncio
+from unittest.mock import AsyncMock, patch
 
 import httpx
 
-from backend.app.main import app
+from backend.app.main import app, market_data
+from backend.app.market_data.models import InstrumentSearchResult
 
 
 
@@ -48,3 +50,16 @@ def test_resolve_hong_kong_share() -> None:
     response = asyncio.run(get("/api/instruments/resolve?input=00700.HK"))
     assert response.status_code == 200
     assert response.json()["provider_symbol"] == "hk00700"
+
+
+def test_search_instruments_returns_ranked_suggestions_without_loading_a_chart() -> None:
+    suggestion = InstrumentSearchResult(
+        input="sh600988", symbol="600988", name="赤峰黄金", market="CN",
+        exchange="SSE", provider_symbol="sh600988", asset_type="stock",
+    )
+    with patch.object(market_data, "search_instruments", AsyncMock(return_value=[suggestion])) as search:
+        response = asyncio.run(get("/api/instruments/search?q=赤峰黄金&limit=5"))
+
+    assert response.status_code == 200
+    assert response.json()[0]["input"] == "sh600988"
+    search.assert_awaited_once_with("赤峰黄金", 5)

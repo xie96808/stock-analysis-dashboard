@@ -25,6 +25,7 @@ import { ChipCostPanel } from './ChipCostPanel'
 import { calculateChipCostEstimate } from '../chips/calculate'
 import { distributionVisibility, type DistributionMode } from '../distributions/model'
 import { extendedChipPanelHeight } from '../chips/panelPosition'
+import { resolveChipOverlayGeometry } from '../chips/geometry'
 
 export type { DistributionMode } from '../distributions/model'
 export type ProfileLayout = 'overlay' | 'dock'
@@ -79,6 +80,8 @@ type OverlayGeometry = {
   profileSource: 'visible' | 'anchored'
   chips: { y: number; price: number; weight: number; profitable: boolean }[]
   chipStats: { currentY: number | null; averageY: number | null }
+  chipScaleMode: 'chart' | 'cost'
+  chipScaleRange: [number, number] | null
   mainPaneHeight: number
   chartHeight: number
   width: number
@@ -202,6 +205,8 @@ export function ChartWorkbench({
     profileSource: 'visible',
     chips: [],
     chipStats: { currentY: null, averageY: null },
+    chipScaleMode: 'chart',
+    chipScaleRange: null,
     mainPaneHeight: 420,
     chartHeight: 0,
     width: 0,
@@ -444,10 +449,12 @@ export function ChartWorkbench({
           price: row.price,
         }]
       })
-      const chips = currentChipEstimate.rows.flatMap((row) => {
-        const y = candleSeries.priceToCoordinate(row.price)
-        return y == null ? [] : [{ y, price: row.price, weight: row.weight, profitable: row.profitable }]
-      })
+      const mainPaneHeight = chart.panes()[0]?.getHeight() ?? host.clientHeight * 0.64
+      const chipGeometry = resolveChipOverlayGeometry(
+        currentChipEstimate,
+        (price) => candleSeries.priceToCoordinate(price),
+        mainPaneHeight,
+      )
       setGeometry((current) => ({
         profile,
         profileStats: {
@@ -459,12 +466,14 @@ export function ChartWorkbench({
           valY: candleSeries.priceToCoordinate(profileResult.val),
         },
         profileSource: anchoredBars.length ? 'anchored' : 'visible',
-        chips,
+        chips: chipGeometry.rows,
         chipStats: {
-          currentY: candleSeries.priceToCoordinate(currentChipEstimate.currentPrice),
-          averageY: candleSeries.priceToCoordinate(currentChipEstimate.averageCost),
+          currentY: chipGeometry.currentY,
+          averageY: chipGeometry.averageY,
         },
-        mainPaneHeight: chart.panes()[0]?.getHeight() ?? host.clientHeight * 0.64,
+        chipScaleMode: chipGeometry.scaleMode,
+        chipScaleRange: chipGeometry.scaleRange,
+        mainPaneHeight,
         chartHeight: host.clientHeight,
         width: host.clientWidth,
         revision: current.revision + 1,
@@ -661,6 +670,8 @@ export function ChartWorkbench({
           priceScaleOffset={priceScaleWidth}
           currentY={geometry.chipStats.currentY}
           averageY={geometry.chipStats.averageY}
+          scaleMode={geometry.chipScaleMode}
+          scaleRange={geometry.chipScaleRange}
           isLatest={chipAsOfDate === chipLatestDate}
           onResetToLatest={onResetChipDate}
         />
