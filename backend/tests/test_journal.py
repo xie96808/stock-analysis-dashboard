@@ -1,5 +1,10 @@
 import base64
+import hashlib
+import json
+import zipfile
 from pathlib import Path
+
+import pytest
 
 from backend.app.journal import JournalCreateInput, JournalRepository, JournalRevisionInput
 
@@ -69,3 +74,23 @@ def test_project_export_checksum_and_restore(tmp_path: Path) -> None:
     assert result["records"] == 1
     assert result["revisions"] == 1
     assert target.list("2026-08-10", None, False)[0]["title"] == "初始判断"
+
+
+def test_project_import_rejects_path_traversal_before_writing(tmp_path: Path) -> None:
+    target = JournalRepository(tmp_path / "target")
+    target.initialize()
+    archive_path = tmp_path / "malicious.zip"
+    records_payload = b"[]"
+    manifest = {
+        "schemaVersion": target.schema_version,
+        "checksums": {"records.json": hashlib.sha256(records_payload).hexdigest()},
+    }
+    with zipfile.ZipFile(archive_path, "w") as archive:
+        archive.writestr("records.json", records_payload)
+        archive.writestr("manifest.json", json.dumps(manifest))
+        archive.writestr("journal/../../escape.txt", b"unexpected")
+
+    with pytest.raises(ValueError, match="Unsafe path"):
+        target.import_project(archive_path)
+
+    assert not (tmp_path / "escape.txt").exists()

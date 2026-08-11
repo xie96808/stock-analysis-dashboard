@@ -6,10 +6,7 @@ import httpx
 from .models import Adjustment, BarPayload, QuoteResponse, Timeframe
 from .symbols import Instrument
 from .aggregate import aggregate_minute_bars
-
-
-class ProviderError(RuntimeError):
-    pass
+from .base import ProviderError
 
 
 class TencentProvider:

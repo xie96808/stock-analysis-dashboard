@@ -42,6 +42,11 @@ class BarsResponse(BaseModel):
     cached: bool
     delayed: bool
     requested_limit: int = 0
+    provider_chain: list[str] = Field(default_factory=list)
+    fallback_used: bool = False
+    stale: bool = False
+    freshness_seconds: int = Field(default=0, ge=0)
+    quality_issues: list[str] = Field(default_factory=list)
     bars: list[BarPayload]
 
 
@@ -56,3 +61,5 @@ class QuoteResponse(BaseModel):
     timestamp: str | None = None
     source: str
     delayed: bool
+    fallback_used: bool = False
+    quality_issues: list[str] = Field(default_factory=list)

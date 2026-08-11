@@ -10,22 +10,26 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from .config import settings
+from .backtest import BacktestRequest, BacktestResult, run_backtest
 from .market_data import MarketDataService
 from .market_data.models import Adjustment, BarsResponse, InstrumentPayload, QuoteResponse, Timeframe
 from .market_data.symbols import SymbolError
-from .market_data.tencent import ProviderError
+from .market_data.base import ProviderError
 from .schemas import DemoInstrument, DemoSnapshotResponse, HealthResponse
 from .journal import ImportProjectInput, JournalCreateInput, JournalRepository, JournalRevisionInput
+from .portfolio import PaperPortfolioRepository, PaperTradeInput
 
 
 market_data = MarketDataService(settings.data_dir / "cache" / "market")
 journal = JournalRepository(settings.data_dir)
+portfolio = PaperPortfolioRepository(settings.data_dir)
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     journal.initialize()
+    portfolio.initialize()
     yield
 
 
@@ -49,6 +53,7 @@ app.add_middleware(
 async def health() -> HealthResponse:
     return HealthResponse(
         service=settings.app_name,
+        phase=settings.phase,
         version=settings.version,
         timestamp=datetime.now(ZoneInfo("Asia/Shanghai")),
     )
@@ -92,6 +97,53 @@ async def market_quote(symbol: str) -> QuoteResponse:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except (ProviderError, httpx.HTTPError, ValueError) as error:
         raise HTTPException(status_code=502, detail=str(error)) from error
+
+
+@app.get("/api/market/providers", tags=["market-data"])
+async def market_providers() -> list[dict]:
+    return market_data.provider_status()
+
+
+@app.post("/api/backtests/run", response_model=BacktestResult, tags=["backtest"])
+async def execute_backtest(payload: BacktestRequest) -> BacktestResult:
+    try:
+        response = await market_data.get_bars(
+            payload.symbol, "1d", "qfq", 2000, refresh=False
+        )
+        return run_backtest(
+            payload,
+            response.bars,
+            response.instrument.market,
+            response.source,
+            response.fetched_at.isoformat(),
+        )
+    except SymbolError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    except (ProviderError, httpx.HTTPError, ValueError) as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@app.get("/api/portfolio", tags=["paper-portfolio"])
+async def paper_portfolio() -> dict:
+    return portfolio.snapshot()
+
+
+@app.post("/api/portfolio/trades", tags=["paper-portfolio"])
+async def create_paper_trade(payload: PaperTradeInput) -> dict:
+    try:
+        return portfolio.create_trade(payload)
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@app.delete("/api/portfolio/trades/{trade_id}", tags=["paper-portfolio"])
+async def delete_paper_trade(trade_id: str) -> dict:
+    try:
+        return portfolio.delete_trade(trade_id)
+    except KeyError as error:
+        raise HTTPException(status_code=404, detail="Paper trade not found") from error
+    except ValueError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
 
 
 @app.get("/api/journal/records", tags=["journal"])

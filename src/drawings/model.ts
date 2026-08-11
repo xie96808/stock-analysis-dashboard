@@ -1,4 +1,4 @@
-export type DrawingType = 'horizontal' | 'trend' | 'ray' | 'channel' | 'rectangle' | 'profile-range' | 'text' | 'freehand' | 'highlighter'
+export type DrawingType = 'horizontal' | 'trend' | 'ray' | 'channel' | 'rectangle' | 'profile-range' | 'text' | 'freehand' | 'highlighter' | 'measurement'
 
 export type DrawingAnchor = {
   timestampMs: number
@@ -39,6 +39,7 @@ export function defaultDrawingStyle(type: DrawingType): DrawingStyle {
   if (type === 'freehand') return { color: '#2962e8', width: 2.2, opacity: 0.92 }
   if (type === 'rectangle') return { color: '#2962e8', width: 1.7, opacity: 0.16 }
   if (type === 'profile-range') return { color: '#8b61d6', width: 1.6, opacity: 0.1, dash: 'dashed' }
+  if (type === 'measurement') return { color: '#566274', width: 1.5, opacity: 0.9, dash: 'dashed' }
   if (type === 'text') return { color: '#343a46', width: 1.5, opacity: 1 }
   return { color: '#e84f63', width: 1.8, opacity: 0.95 }
 }
@@ -54,7 +55,29 @@ export function toolToDrawingType(tool: string): DrawingType | null {
     文本: 'text',
     自由画笔: 'freehand',
     荧光笔: 'highlighter',
+    测量: 'measurement',
   } as Record<string, DrawingType>)[tool] ?? null
+}
+
+export function drawingLayerClassName(drawingType: DrawingType | null, selectedId: string | null) {
+  return `drawing-layer${drawingType ? ' is-creating' : ''}${selectedId ? ' has-selection' : ''}`
+}
+
+export function drawingUsesTimeCoordinate(type: DrawingType) {
+  return type !== 'horizontal'
+}
+
+export function formatMeasurement(start: DrawingAnchor, end: DrawingAnchor) {
+  const change = end.price - start.price
+  const percent = start.price > 0 ? change / start.price * 100 : 0
+  const elapsedMinutes = Math.max(0, Math.round(Math.abs(end.timestampMs - start.timestampMs) / 60_000))
+  const duration = elapsedMinutes >= 1_440
+    ? `${Math.round(elapsedMinutes / 1_440)}天`
+    : elapsedMinutes >= 60
+      ? `${Math.round(elapsedMinutes / 60)}小时`
+      : `${elapsedMinutes}分钟`
+  const sign = change > 0 ? '+' : ''
+  return `${sign}${change.toFixed(2)} · ${sign}${percent.toFixed(2)}% · ${duration}`
 }
 
 export function createDrawingId() {

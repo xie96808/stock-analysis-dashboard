@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import {
   appendJournalRevision,
   createJournalRecord,
@@ -17,7 +17,6 @@ import {
   type JournalRecordDetail,
   type JournalRecordSummary,
   type MarketAdjustment,
-  type MarketBarsResponse,
   type MarketInstrument,
   type MarketQuoteResponse,
   type MarketTimeframe,
@@ -29,12 +28,21 @@ import {
   type IndicatorConfig,
   type ProfileLayout,
 } from './components/ChartWorkbench'
+import { BacktestPanel } from './components/BacktestPanel'
+import { AlertPanel } from './components/AlertPanel'
+import { WatchlistPanel } from './components/WatchlistPanel'
+import { PortfolioPanel } from './components/PortfolioPanel'
 import { Icon } from './components/Icon'
 import { IntradayView } from './components/IntradayView'
 import { JournalCalendar } from './components/JournalCalendar'
 import { fixtureBars, type IntradayPoint, type StockBar } from './data/fixture'
-import { emptyDrawingStore, type Drawing, type DrawingStore } from './drawings/model'
+import type { Drawing, DrawingStore } from './drawings/model'
 import { resolveChipAsOfDate } from './distributions/model'
+import { toIntradayPoints, toStockBars } from './market/transform'
+import { marketSessionState } from './market/refreshSchedule'
+import { parseDrawingStore, parseIndicatorConfig, shanghaiDateKey } from './state/preferences'
+import { evaluateAlerts, parseAlertEvents, parseAlertRules, selectAlertBars, type AlertEvent, type AlertRule } from './alerts/model'
+import { parseWatchlist, upsertWatchlist, type WatchlistItem } from './watchlist/model'
 import './styles.css'
 
 const LazyMarkdown = lazy(() => import('react-markdown'))
@@ -180,33 +188,11 @@ function compactVolume(volume: number) {
   return String(Math.round(volume))
 }
 
-function toStockBars(response: MarketBarsResponse): StockBar[] {
-  return response.bars.map((bar) => ({
-    date: bar.time,
-    open: bar.open,
-    high: bar.high,
-    low: bar.low,
-    close: bar.close,
-    volume: bar.volume,
-    amount: bar.amount,
-    turnoverRate: bar.turnover_rate,
-  }))
-}
-
-function toIntradayPoints(response: MarketBarsResponse): IntradayPoint[] {
-  let cumulativeValue = 0
-  let cumulativeVolume = 0
-  return response.bars.map((bar) => {
-    const timestamp = Math.floor(new Date(`${bar.time.replace(' ', 'T')}:00+08:00`).getTime() / 1000)
-    cumulativeValue += bar.close * bar.volume
-    cumulativeVolume += bar.volume
-    return {
-      timestamp,
-      price: bar.close,
-      average: cumulativeVolume > 0 ? cumulativeValue / cumulativeVolume : bar.close,
-      volume: bar.volume,
-    }
-  })
+function formatFreshness(seconds: number) {
+  if (seconds < 60) return `${seconds}秒`
+  if (seconds < 3_600) return `${Math.floor(seconds / 60)}分钟`
+  if (seconds < 86_400) return `${Math.floor(seconds / 3_600)}小时`
+  return `${Math.floor(seconds / 86_400)}天`
 }
 
 const fallbackInstrument: MarketInstrument = {
@@ -251,13 +237,17 @@ function recordFromSummary(record: JournalRecordSummary): RecordItem {
 export default function App() {
   const [bars, setBars] = useState<StockBar[]>(fixtureBars)
   const [chipBars, setChipBars] = useState<StockBar[]>(fixtureBars)
+  const [dailyAlertBars, setDailyAlertBars] = useState<StockBar[]>(fixtureBars)
   const [instrument, setInstrument] = useState<MarketInstrument>(fallbackInstrument)
   const [quote, setQuote] = useState<MarketQuoteResponse | null>(null)
   const [symbolInput, setSymbolInput] = useState('001280')
   const [activeSymbol, setActiveSymbol] = useState('001280')
   const [adjustment, setAdjustment] = useState<MarketAdjustment>('qfq')
   const [marketState, setMarketState] = useState<'loading' | 'ready' | 'fallback' | 'error'>('loading')
-  const [marketMeta, setMarketMeta] = useState({ source: 'deterministic-fixture', cached: false, delayed: true })
+  const [marketMeta, setMarketMeta] = useState({
+    source: 'deterministic-fixture', cached: false, delayed: true, fetchedAt: null as string | null,
+    fallbackUsed: false, stale: false, freshnessSeconds: 0, qualityIssues: [] as string[], providerChain: [] as string[],
+  })
   const [hoverBar, setHoverBar] = useState<StockBar | null>(null)
   const [logPrice, setLogPrice] = useState(true)
   const [percentPrice, setPercentPrice] = useState(false)
@@ -268,17 +258,19 @@ export default function App() {
   const [chipAsOfDate, setChipAsOfDate] = useState<string | null>(null)
   const [cleanMode, setCleanMode] = useState(false)
   const [indicatorOpen, setIndicatorOpen] = useState(false)
-  const [indicators, setIndicators] = useState<IndicatorConfig>(() => {
-    try {
-      const saved = window.localStorage.getItem('dashboard-indicators-v1')
-      return saved ? { ...defaultIndicators, ...JSON.parse(saved) as Partial<IndicatorConfig> } : defaultIndicators
-    } catch {
-      return defaultIndicators
-    }
-  })
+  const [indicators, setIndicators] = useState<IndicatorConfig>(() => (
+    parseIndicatorConfig(window.localStorage.getItem('dashboard-indicators-v1'), defaultIndicators)
+  ))
   const [journalOpen, setJournalOpen] = useState(true)
+  const [backtestOpen, setBacktestOpen] = useState(false)
+  const [alertOpen, setAlertOpen] = useState(false)
+  const [alertRules, setAlertRules] = useState<AlertRule[]>(() => parseAlertRules(window.localStorage.getItem('dashboard-alert-rules-v1')))
+  const [alertEvents, setAlertEvents] = useState<AlertEvent[]>(() => parseAlertEvents(window.localStorage.getItem('dashboard-alert-events-v1')))
+  const [watchlistOpen, setWatchlistOpen] = useState(false)
+  const [watchlist, setWatchlist] = useState<WatchlistItem[]>(() => parseWatchlist(window.localStorage.getItem('dashboard-watchlist-v1')))
+  const [portfolioOpen, setPortfolioOpen] = useState(false)
   const [calendarOpen, setCalendarOpen] = useState(false)
-  const [selectedJournalDate, setSelectedJournalDate] = useState('2026-08-09')
+  const [selectedJournalDate, setSelectedJournalDate] = useState(shanghaiDateKey)
   const [selectedDay, setSelectedDay] = useState<StockBar | null>(null)
   const [intradayPoints, setIntradayPoints] = useState<IntradayPoint[]>([])
   const [intradayLoading, setIntradayLoading] = useState(false)
@@ -287,14 +279,9 @@ export default function App() {
   const [snapMode, setSnapMode] = useState<'off' | 'weak' | 'strong'>('weak')
   const [candleTheme, setCandleTheme] = useState<'mono' | 'cn'>('mono')
   const [workspace, setWorkspace] = useState('主分析')
-  const [drawingStore, setDrawingStore] = useState<DrawingStore>(() => {
-    try {
-      const saved = window.localStorage.getItem('dashboard-drawings-v1')
-      return saved ? JSON.parse(saved) as DrawingStore : emptyDrawingStore
-    } catch {
-      return emptyDrawingStore
-    }
-  })
+  const [drawingStore, setDrawingStore] = useState<DrawingStore>(() => (
+    parseDrawingStore(window.localStorage.getItem('dashboard-drawings-v1'))
+  ))
   const [drawingHistory, setDrawingHistory] = useState<{ past: Drawing[][]; future: Drawing[][] }>({ past: [], future: [] })
   const [note, setNote] = useState('')
   const [recordTitle, setRecordTitle] = useState('')
@@ -320,7 +307,36 @@ export default function App() {
   })
   const [apiHealth, setApiHealth] = useState<ApiHealth | null>(null)
   const [apiState, setApiState] = useState<'connecting' | 'ready' | 'offline'>('connecting')
-  const [toast, setToast] = useState('P6 预测日志 · 正在连接本地历史库')
+  const [toast, setToast] = useState('正在连接本地行情与研究日志')
+  const [marketRefreshRevision, setMarketRefreshRevision] = useState(0)
+  const [marketRefreshing, setMarketRefreshing] = useState(false)
+  const [autoRefreshEnabled, setAutoRefreshEnabled] = useState(() => (
+    window.localStorage.getItem('dashboard-auto-refresh-v1') === 'true'
+  ))
+  const [autoRefreshSession, setAutoRefreshSession] = useState(() => marketSessionState(new Date(), fallbackInstrument.market))
+  const [viewResetRevision, setViewResetRevision] = useState(0)
+  const [chartDataRevision, setChartDataRevision] = useState({ id: 0, preserveView: false })
+  const toastTimerRef = useRef<number | null>(null)
+  const marketRequestIdRef = useRef(0)
+  const marketRefreshHandledRef = useRef(0)
+  const intradayRefreshHandledRef = useRef(0)
+  const alertEvaluationRef = useRef('')
+
+  const notify = useCallback((message: string) => {
+    if (toastTimerRef.current != null) window.clearTimeout(toastTimerRef.current)
+    setToast(message)
+    toastTimerRef.current = window.setTimeout(() => {
+      setToast('')
+      toastTimerRef.current = null
+    }, 2_600)
+  }, [])
+
+  const requestMarketRefresh = useCallback(() => {
+    if (marketState === 'loading' || marketRefreshing) return
+    setMarketRefreshRevision((current) => current + 1)
+  }, [marketRefreshing, marketState])
+  const requestMarketRefreshRef = useRef(requestMarketRefresh)
+  requestMarketRefreshRef.current = requestMarketRefresh
 
   const chartBars = useMemo(
     () => historicalCutoff ? bars.filter((bar) => bar.date.slice(0, 10) <= historicalCutoff) : bars,
@@ -336,6 +352,10 @@ export default function App() {
   const previousBar = chartBars.length > 1 ? chartBars[chartBars.length - 2] : null
   const referenceClose = historicalCutoff ? previousBar?.close ?? lastBar.close : quote?.previous_close ?? previousBar?.close ?? lastBar.close
   const latestPrice = historicalCutoff ? lastBar.close : quote?.last ?? lastBar.close
+  const alertEvaluationBars = useMemo(
+    () => selectAlertBars(dailyAlertBars, bars),
+    [bars, dailyAlertBars],
+  )
   const priceChange = latestPrice - referenceClose
   const priceChangePercent = referenceClose ? priceChange / referenceClose * 100 : 0
   const displayName = instrument.name || instrument.symbol
@@ -353,7 +373,7 @@ export default function App() {
     setDistributionMode('chips')
     setLastDistributionMode('chips')
     notify(`筹码分布已固定至${date}`)
-  }, [instrument.market, timeframe])
+  }, [instrument.market, notify, timeframe])
   const closeIntraday = useCallback(() => {
     setSelectedDay(null)
     setIntradayPoints([])
@@ -366,9 +386,19 @@ export default function App() {
   }, [])
 
   const displayDate = useMemo(() => {
-    const source = displayBar.date.split('-')
+    const source = displayBar.date.slice(0, 10).split('-')
     return `${source[0]}年${Number(source[1])}月${Number(source[2])}日`
   }, [displayBar.date])
+
+  const marketFetchedAtLabel = useMemo(() => {
+    if (!marketMeta.fetchedAt) return '尚无成功刷新时间'
+    const value = new Date(marketMeta.fetchedAt)
+    if (!Number.isFinite(value.getTime())) return '刷新时间未知'
+    return new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    }).format(value)
+  }, [marketMeta.fetchedAt])
 
   const journalDateLabel = useMemo(() => {
     const [year, month, day] = selectedJournalDate.split('-').map(Number)
@@ -380,9 +410,48 @@ export default function App() {
     [records, selectedJournalDate],
   )
 
+  useEffect(() => () => {
+    if (toastTimerRef.current != null) window.clearTimeout(toastTimerRef.current)
+  }, [])
+
+  useEffect(() => {
+    if (apiState === 'ready' && journalState === 'ready' && toast === '正在连接本地行情与研究日志') {
+      setToast('')
+    }
+  }, [apiState, journalState, toast])
+
   useEffect(() => {
     window.localStorage.setItem('dashboard-font-scale', fontScale)
   }, [fontScale])
+
+  useEffect(() => {
+    window.localStorage.setItem('dashboard-auto-refresh-v1', String(autoRefreshEnabled))
+  }, [autoRefreshEnabled])
+
+  useEffect(() => {
+    window.localStorage.setItem('dashboard-alert-rules-v1', JSON.stringify(alertRules))
+  }, [alertRules])
+
+  useEffect(() => {
+    window.localStorage.setItem('dashboard-alert-events-v1', JSON.stringify(alertEvents.slice(0, 100)))
+  }, [alertEvents])
+
+  useEffect(() => {
+    window.localStorage.setItem('dashboard-watchlist-v1', JSON.stringify(watchlist))
+  }, [watchlist])
+
+  useEffect(() => {
+    const updateSession = () => setAutoRefreshSession(marketSessionState(new Date(), instrument.market))
+    updateSession()
+    const timer = window.setInterval(() => {
+      const session = marketSessionState(new Date(), instrument.market)
+      setAutoRefreshSession(session)
+      if (autoRefreshEnabled && session.open && document.visibilityState === 'visible') {
+        requestMarketRefreshRef.current()
+      }
+    }, 15_000)
+    return () => window.clearInterval(timer)
+  }, [autoRefreshEnabled, instrument.market])
 
   useEffect(() => {
     window.localStorage.setItem('dashboard-distribution-v2', JSON.stringify({
@@ -395,7 +464,30 @@ export default function App() {
 
   useEffect(() => {
     setChipAsOfDate(null)
+    setHistoricalCutoff(null)
+    setHoverBar(null)
+    setQuote(null)
+    setDailyAlertBars([])
   }, [activeSymbol])
+
+  useEffect(() => {
+    if (marketState !== 'ready' || !alertEvaluationBars.length) return
+    const relevantRules = alertRules.filter((rule) => rule.symbol === instrument.symbol)
+    if (!relevantRules.length) return
+    const alertDataDate = alertEvaluationBars.at(-1)?.date ?? ''
+    const signature = JSON.stringify([instrument.symbol, marketMeta.fetchedAt, latestPrice, alertDataDate, relevantRules])
+    if (signature === alertEvaluationRef.current) return
+    alertEvaluationRef.current = signature
+    const result = evaluateAlerts(relevantRules, alertEvaluationBars, latestPrice)
+    if (result.changed) {
+      const byId = new Map(result.rules.map((rule) => [rule.id, rule]))
+      setAlertRules((current) => current.map((rule) => byId.get(rule.id) ?? rule))
+    }
+    if (result.events.length) {
+      setAlertEvents((current) => [...result.events, ...current].slice(0, 100))
+      notify(`条件提醒：${result.events[0].message}`)
+    }
+  }, [alertEvaluationBars, alertRules, instrument.symbol, latestPrice, marketMeta.fetchedAt, marketState, notify])
 
   useEffect(() => {
     if (instrument.market !== 'HK' || (distributionMode !== 'chips' && lastDistributionMode !== 'chips')) return
@@ -454,15 +546,25 @@ export default function App() {
 
   useEffect(() => {
     const controller = new AbortController()
-    setMarketState('loading')
-    setChipBars([])
-    setSelectedDay(null)
-    setIntradayPoints([])
+    const requestId = ++marketRequestIdRef.current
+    const forceRefresh = marketRefreshRevision > marketRefreshHandledRef.current
+    marketRefreshHandledRef.current = marketRefreshRevision
+    if (forceRefresh) {
+      setMarketRefreshing(true)
+    } else {
+      setMarketState('loading')
+      setChipBars([])
+      setSelectedDay(null)
+      setIntradayPoints([])
+      setHoverBar(null)
+      setQuote(null)
+    }
     const selectedTimeframe = timeframeValues[timeframe]
     const primaryBarsRequest = getMarketBars(activeSymbol, {
       timeframe: selectedTimeframe,
       adjustment,
       limit: selectedTimeframe.endsWith('m') ? 640 : 2000,
+      refresh: forceRefresh,
     }, controller.signal)
     const chipAdjustment: MarketAdjustment = selectedTimeframe.endsWith('m') ? 'none' : adjustment
     const chipBarsRequest = selectedTimeframe === '1d' && chipAdjustment === adjustment
@@ -471,13 +573,24 @@ export default function App() {
         timeframe: '1d',
         adjustment: chipAdjustment,
         limit: 2000,
+        refresh: forceRefresh,
+      }, controller.signal)
+    const alertBarsRequest = selectedTimeframe === '1d' && adjustment === 'qfq'
+      ? primaryBarsRequest
+      : getMarketBars(activeSymbol, {
+        timeframe: '1d',
+        adjustment: 'qfq',
+        limit: 2000,
+        refresh: forceRefresh,
       }, controller.signal)
     Promise.all([
       primaryBarsRequest,
       getMarketQuote(activeSymbol, controller.signal).catch(() => null),
       chipBarsRequest.catch(() => null),
+      alertBarsRequest.catch(() => null),
     ])
-      .then(([response, currentQuote, chipResponse]) => {
+      .then(([response, currentQuote, chipResponse, alertResponse]) => {
+        if (requestId !== marketRequestIdRef.current) return
         const nextBars = toStockBars(response)
         if (!nextBars.length) throw new Error('行情源未返回K线')
         const savedAdjustment = window.localStorage.getItem(`market-adjustment:${response.instrument.key}`)
@@ -489,20 +602,42 @@ export default function App() {
           setAdjustment(savedAdjustment)
           return
         }
+        setChartDataRevision((current) => ({ id: current.id + 1, preserveView: forceRefresh }))
         setBars(nextBars)
         setChipBars(chipResponse ? toStockBars(chipResponse) : selectedTimeframe === '1d' ? nextBars : [])
+        setDailyAlertBars(alertResponse ? toStockBars(alertResponse) : [])
         setInstrument(response.instrument)
         setQuote(currentQuote)
-        setMarketMeta({ source: response.source, cached: response.cached, delayed: response.delayed })
+        setMarketMeta({
+          source: response.source,
+          cached: response.cached,
+          delayed: response.delayed,
+          fetchedAt: response.fetched_at,
+          fallbackUsed: response.fallback_used,
+          stale: response.stale,
+          freshnessSeconds: response.freshness_seconds,
+          qualityIssues: response.quality_issues,
+          providerChain: response.provider_chain,
+        })
         setMarketState('ready')
+        if (forceRefresh) notify(`已刷新${response.instrument.name ?? response.instrument.symbol}最新行情`)
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return
+        if (requestId !== marketRequestIdRef.current) return
+        if (forceRefresh) {
+          notify(error instanceof Error ? `刷新失败，继续显示现有数据：${error.message}` : '刷新失败，继续显示现有数据')
+          return
+        }
         if (activeSymbol === '001280') {
           setBars(fixtureBars)
           setChipBars(fixtureBars)
+          setDailyAlertBars(fixtureBars)
           setInstrument(fallbackInstrument)
-          setMarketMeta({ source: 'deterministic-fixture', cached: false, delayed: true })
+          setMarketMeta({
+            source: 'deterministic-fixture', cached: false, delayed: true, fetchedAt: null,
+            fallbackUsed: false, stale: false, freshnessSeconds: 0, qualityIssues: [], providerChain: [],
+          })
           setMarketState('fallback')
           notify('行情服务暂未连接，已保留可交互样例数据')
         } else {
@@ -510,18 +645,24 @@ export default function App() {
           notify(error instanceof Error ? `代码或行情读取失败：${error.message}` : '代码或行情读取失败')
         }
       })
+      .finally(() => {
+        if (requestId === marketRequestIdRef.current) setMarketRefreshing(false)
+      })
     return () => controller.abort()
-  }, [activeSymbol, adjustment, timeframe])
+  }, [activeSymbol, adjustment, marketRefreshRevision, notify, timeframe])
 
   useEffect(() => {
     if (!selectedDay) return
     const controller = new AbortController()
+    const forceRefresh = marketRefreshRevision > intradayRefreshHandledRef.current
+    intradayRefreshHandledRef.current = marketRefreshRevision
     setIntradayLoading(true)
     getMarketBars(activeSymbol, {
       timeframe: '5m',
       adjustment: 'none',
       limit: 640,
       tradingDate: selectedDay.date.slice(0, 10),
+      refresh: forceRefresh,
     }, controller.signal)
       .then((response) => setIntradayPoints(toIntradayPoints(response)))
       .catch((error: unknown) => {
@@ -531,7 +672,7 @@ export default function App() {
       })
       .finally(() => setIntradayLoading(false))
     return () => controller.abort()
-  }, [activeSymbol, selectedDay])
+  }, [activeSymbol, marketRefreshRevision, notify, selectedDay])
 
   useEffect(() => {
     if (!selectedDay) return
@@ -542,11 +683,6 @@ export default function App() {
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [closeIntraday, selectedDay])
 
-  const notify = (message: string) => {
-    setToast(message)
-    window.setTimeout(() => setToast(''), 2600)
-  }
-
   const submitSymbol = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const value = symbolInput.trim()
@@ -555,6 +691,30 @@ export default function App() {
       return
     }
     setActiveSymbol(value)
+  }
+
+  const addCurrentToWatchlist = () => {
+    const item: WatchlistItem = {
+      key: instrument.key,
+      symbol: instrument.symbol,
+      name: displayName,
+      market: instrument.market,
+      exchange: instrument.exchange,
+      status: 'pending',
+      note: '',
+      addedAt: new Date().toISOString(),
+      reviewedAt: null,
+    }
+    const existed = watchlist.some((entry) => entry.key === item.key)
+    setWatchlist((current) => upsertWatchlist(current, item))
+    notify(existed ? `${displayName}已在自选股中` : `已将${displayName}加入自选股`)
+  }
+
+  const selectWatchlistItem = (item: WatchlistItem) => {
+    setSymbolInput(item.symbol)
+    setActiveSymbol(item.symbol)
+    setWatchlistOpen(false)
+    notify(`正在加载自选股：${item.name}`)
   }
 
   const replaceWorkspaceDrawings = useCallback((next: Drawing[]) => {
@@ -703,9 +863,86 @@ export default function App() {
       setRecords((current) => current.filter((item) => item.id !== recordId))
       return
     }
-    await recycleJournalRecord(recordId)
-    await refreshJournal()
-    notify('记录已移入回收站，可恢复')
+    try {
+      await recycleJournalRecord(recordId)
+      await refreshJournal()
+      notify('记录已移入回收站，可恢复')
+    } catch (error) {
+      notify(error instanceof Error ? `删除失败：${error.message}` : '删除失败')
+    }
+  }
+
+  const beginAppendRecord = async (record: RecordItem) => {
+    if (record.id.startsWith('fixture-')) {
+      notify('正式记录可追加不可覆盖的版本')
+      return
+    }
+    try {
+      const detail = await getJournalRecord(record.id)
+      setEditingRecordId(record.id)
+      setNote(detail.current_revision.thesis_markdown)
+      setRecordTitle(detail.current_revision.title)
+      notify(`正在基于v${detail.current_revision.version}追加新版本`)
+    } catch (error) {
+      notify(error instanceof Error ? `版本读取失败：${error.message}` : '版本读取失败')
+    }
+  }
+
+  const restoreRecordAction = async (recordId: string) => {
+    try {
+      await restoreJournalRecord(recordId)
+      await refreshJournal()
+      notify('记录已恢复')
+    } catch (error) {
+      notify(error instanceof Error ? `恢复失败：${error.message}` : '恢复失败')
+    }
+  }
+
+  const permanentlyDeleteAction = async (recordId: string) => {
+    if (pendingPermanentId !== recordId) {
+      setPendingPermanentId(recordId)
+      return
+    }
+    try {
+      await permanentlyDeleteJournalRecord(recordId)
+      setPendingPermanentId(null)
+      await refreshJournal()
+      notify('记录及全部revision已永久删除')
+    } catch (error) {
+      notify(error instanceof Error ? `永久删除失败：${error.message}` : '永久删除失败')
+    }
+  }
+
+  const exportProjectAction = async () => {
+    try {
+      const result = await exportJournalProject()
+      notify(`完整项目已导出：${result.path}`)
+    } catch (error) {
+      notify(error instanceof Error ? `项目导出失败：${error.message}` : '项目导出失败')
+    }
+  }
+
+  const importProjectAction = async () => {
+    if (!importPath.trim()) {
+      notify('请先填写项目ZIP本地路径')
+      return
+    }
+    try {
+      const result = await importJournalProject(importPath.trim())
+      await refreshJournal()
+      notify(`已恢复${result.records}条记录/${result.revisions}个版本`)
+    } catch (error) {
+      notify(error instanceof Error ? `项目恢复失败：${error.message}` : '项目恢复失败')
+    }
+  }
+
+  const exportRecordAction = async (recordId: string) => {
+    try {
+      const result = await exportJournalRecord(recordId)
+      notify(`单条Markdown已导出：${result.record_markdown}`)
+    } catch (error) {
+      notify(error instanceof Error ? `记录导出失败：${error.message}` : '记录导出失败')
+    }
   }
 
   const exportChartPng = async () => {
@@ -735,8 +972,12 @@ export default function App() {
   }
 
   const toggleFullscreen = async () => {
-    if (document.fullscreenElement) await document.exitFullscreen()
-    else await document.documentElement.requestFullscreen()
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen()
+      else await document.documentElement.requestFullscreen()
+    } catch (error) {
+      notify(error instanceof Error ? `全屏切换失败：${error.message}` : '全屏切换失败')
+    }
   }
 
   return (
@@ -753,6 +994,11 @@ export default function App() {
           <input
             value={symbolInput}
             onChange={(event) => setSymbolInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key !== 'Enter') return
+              event.preventDefault()
+              event.currentTarget.form?.requestSubmit()
+            }}
             aria-label="股票代码"
             placeholder="A股 / 港股代码"
           />
@@ -762,8 +1008,12 @@ export default function App() {
         </form>
 
         <nav className="header-nav" aria-label="工作区导航">
-          <button className="nav-item is-active">图表</button>
+          <button className={`nav-item${backtestOpen ? '' : ' is-active'}`} onClick={() => setBacktestOpen(false)}>图表</button>
           <button className="nav-item" onClick={() => { setJournalOpen(true); notify('研究日志已打开，可按日期查看预测与revision') }}>复盘</button>
+          <button className={`nav-item${backtestOpen ? ' is-active' : ''}`} onClick={() => setBacktestOpen(true)}>回测</button>
+          <button className={`nav-item${alertOpen ? ' is-active' : ''}`} onClick={() => setAlertOpen(true)}>提醒{alertRules.filter((rule) => rule.enabled).length ? ` ${alertRules.filter((rule) => rule.enabled).length}` : ''}</button>
+          <button className={`nav-item${watchlistOpen ? ' is-active' : ''}`} onClick={() => setWatchlistOpen(true)}>自选 {watchlist.length}</button>
+          <button className={`nav-item${portfolioOpen ? ' is-active' : ''}`} onClick={() => setPortfolioOpen(true)}>模拟</button>
           <button className="nav-item" onClick={() => notify(`${displayName} · ${marketMeta.source}${marketMeta.cached ? ' · 缓存命中' : ''}`)}>数据</button>
         </nav>
 
@@ -797,7 +1047,7 @@ export default function App() {
       <section className="quote-header">
         <div className="instrument">
           <div className="instrument-title">
-            <span className="favorite">★</span>
+            <button className={`favorite${watchlist.some((item) => item.key === instrument.key) ? ' is-saved' : ''}`} type="button" aria-label="加入自选股" title="加入自选股" onClick={addCurrentToWatchlist}>★</button>
             <strong>{displayName}</strong>
             <span className="instrument-code">{instrument.symbol}</span>
             <span className="market-tag">{instrument.exchange}</span>
@@ -920,10 +1170,34 @@ export default function App() {
             <option value="strong">强</option>
           </select>
         </label>
-        <button className="toolbar-action" onClick={() => notify('图表已恢复到建议范围')}>适应画面</button>
+        <button className="toolbar-action" onClick={() => {
+          setViewResetRevision((current) => current + 1)
+          notify('图表已恢复到建议范围')
+        }}>适应画面</button>
         <div className="toolbar-spacer" />
-        <span className={`data-status is-${marketState}`} title={`数据源：${marketMeta.source}`}>
-          <i />{marketState === 'loading' ? '读取行情' : marketState === 'fallback' ? '样例降级' : marketState === 'error' ? '读取失败' : `${marketMeta.delayed ? '延时' : '实时'}数据${marketMeta.cached ? ' · 缓存' : ''}`}
+        <button
+          className={`toolbar-action market-refresh${marketRefreshing ? ' is-refreshing' : ''}`}
+          type="button"
+          aria-label="刷新最新数据"
+          title={`刷新最新数据 · 上次获取 ${marketFetchedAtLabel}`}
+          disabled={marketState === 'loading' || marketRefreshing}
+          onClick={requestMarketRefresh}
+        ><Icon name="refresh" />{marketRefreshing ? '刷新中' : '刷新'}</button>
+        <button
+          className={`toolbar-toggle auto-refresh${autoRefreshEnabled ? ' is-active' : ''}`}
+          type="button"
+          aria-pressed={autoRefreshEnabled}
+          title={`交易时段每15秒刷新；后台标签页自动暂停 · ${autoRefreshSession.label}`}
+          onClick={() => {
+            setAutoRefreshEnabled((value) => !value)
+            notify(autoRefreshEnabled ? '已关闭15秒自动刷新' : `已开启15秒自动刷新 · ${autoRefreshSession.label}`)
+          }}
+        >自动15秒<span className={`auto-refresh-dot${autoRefreshSession.open ? ' is-open' : ''}`} /></button>
+        <span
+          className={`data-status is-${marketRefreshing ? 'loading' : marketMeta.stale ? 'error' : marketState}`}
+          title={`数据源：${marketMeta.source} · 获取时间：${marketFetchedAtLabel} · 行情距今：${formatFreshness(marketMeta.freshnessSeconds)}${marketMeta.providerChain.length ? ` · 尝试：${marketMeta.providerChain.join(' → ')}` : ''}${marketMeta.qualityIssues.length ? ` · 提示：${marketMeta.qualityIssues.join('；')}` : ''}`}
+        >
+          <i />{marketRefreshing ? '正在获取最新数据' : marketState === 'loading' ? '读取行情' : marketState === 'fallback' ? '样例降级' : marketState === 'error' ? '读取失败' : marketMeta.stale ? '过期缓存 · 注意' : marketMeta.fallbackUsed ? '备用行情源' : `${marketMeta.delayed ? '延时' : '实时'}数据${marketMeta.cached ? ' · 缓存' : ''}`}
         </span>
         <button className="journal-toggle" onClick={() => setJournalOpen((value) => !value)}>
           <Icon name="journal" />
@@ -1011,7 +1285,6 @@ export default function App() {
               {selectedDay ? (
                 <button className="back-to-daily" onClick={closeIntraday}>← 返回日K</button>
               ) : <span>工作区：{workspace}</span>}
-              <button aria-label="布局菜单" onClick={() => notify('当前工作区布局已自动保存')}><Icon name="more" /></button>
             </div>
           </div>
           {selectedDay ? (
@@ -1037,6 +1310,9 @@ export default function App() {
               activeTool={activeTool}
               snapMode={snapMode}
               drawings={drawings}
+              resetViewRevision={viewResetRevision}
+              dataRevision={chartDataRevision.id}
+              preserveViewOnDataChange={chartDataRevision.preserveView}
               onCommitDrawings={commitDrawings}
               fontScale={fontScale}
               onHoverBar={handleHoverBar}
@@ -1124,21 +1400,13 @@ export default function App() {
                     <div className="record-actions">
                       {!trashOpen && <>
                         <button onClick={() => openRecord(record.id)}>查看快照</button>
-                        <button onClick={async () => {
-                          if (record.id.startsWith('fixture-')) return notify('正式记录可追加不可覆盖的版本')
-                          const detail = await getJournalRecord(record.id)
-                          setEditingRecordId(record.id); setNote(detail.current_revision.thesis_markdown); setRecordTitle(detail.current_revision.title)
-                          notify(`正在基于v${detail.current_revision.version}追加新版本`)
-                        }}>追加版本</button>
+                        <button onClick={() => beginAppendRecord(record)}>追加版本</button>
                         <button onClick={() => openRecord(record.id)}>加载</button>
                         <button onClick={() => recycleRecord(record.id)}>删除</button>
                       </>}
                       {trashOpen && <>
-                        <button onClick={async () => { await restoreJournalRecord(record.id); await refreshJournal(); notify('记录已恢复') }}>恢复</button>
-                        <button className="danger-link" onClick={async () => {
-                          if (pendingPermanentId !== record.id) { setPendingPermanentId(record.id); return }
-                          await permanentlyDeleteJournalRecord(record.id); setPendingPermanentId(null); await refreshJournal(); notify('记录及全部revision已永久删除')
-                        }}>{pendingPermanentId === record.id ? '再次点击永久删除' : '永久删除'}</button>
+                        <button onClick={() => restoreRecordAction(record.id)}>恢复</button>
+                        <button className="danger-link" onClick={() => permanentlyDeleteAction(record.id)}>{pendingPermanentId === record.id ? '再次点击永久删除' : '永久删除'}</button>
                       </>}
                     </div>
                   </div>
@@ -1153,18 +1421,56 @@ export default function App() {
               )}
             </div>
 
-            <button className="journal-footer-button" onClick={async () => { const result = await exportJournalProject(); notify(`完整项目已导出：${result.path}`) }}>
+            <button className="journal-footer-button" onClick={exportProjectAction}>
               导出全部历史与校验清单
               <Icon name="chevron" />
             </button>
             <div className="journal-import-row">
               <input value={importPath} onChange={(event) => setImportPath(event.target.value)} placeholder="粘贴项目ZIP本地路径" />
-              <button onClick={async () => { const result = await importJournalProject(importPath); await refreshJournal(); notify(`已恢复${result.records}条记录/${result.revisions}个版本`) }}>恢复</button>
+              <button onClick={importProjectAction}>恢复</button>
             </div>
             <span className={`journal-storage-state is-${journalState}`}>{journalState === 'ready' ? 'SQLite事实库 · 每日备份30份' : journalState === 'loading' ? '正在读取SQLite' : 'API离线 · 当前展示本地样例'}</span>
           </aside>
         )}
       </main>
+
+      {backtestOpen && <BacktestPanel
+        symbol={instrument.symbol}
+        name={displayName}
+        market={instrument.market}
+        onClose={() => setBacktestOpen(false)}
+        onMessage={notify}
+      />}
+
+      {alertOpen && <AlertPanel
+        symbol={instrument.symbol}
+        name={displayName}
+        price={latestPrice}
+        rules={alertRules}
+        events={alertEvents}
+        onRulesChange={setAlertRules}
+        onClearEvents={() => setAlertEvents((current) => current.filter((event) => event.symbol !== instrument.symbol))}
+        onClose={() => setAlertOpen(false)}
+        onMessage={notify}
+      />}
+
+      {watchlistOpen && <WatchlistPanel
+        currentKey={instrument.key}
+        items={watchlist}
+        onChange={setWatchlist}
+        onSelect={selectWatchlistItem}
+        onClose={() => setWatchlistOpen(false)}
+        onMessage={notify}
+      />}
+
+      {portfolioOpen && <PortfolioPanel
+        symbol={instrument.symbol}
+        name={displayName}
+        market={instrument.market}
+        currentPrice={latestPrice}
+        onClose={() => setPortfolioOpen(false)}
+        onMessage={notify}
+      />}
 
       {previewRecord && (() => {
         const revision = previewRecord.revisions.find((item) => item.id === previewRevisionId) ?? previewRecord.current_revision
@@ -1196,7 +1502,7 @@ export default function App() {
                 <button onClick={() => loadRevision('historical')}>以当日视角查看</button>
                 <button onClick={() => loadRevision('copy')}>复制画线到当前工作区</button>
                 <button onClick={() => loadRevision('replace')}>用快照替换工作区</button>
-                <button onClick={async () => { const result = await exportJournalRecord(previewRecord.id); notify(`单条Markdown已导出：${result.record_markdown}`) }}>导出Markdown/PNG/JSON</button>
+                <button onClick={() => exportRecordAction(previewRecord.id)}>导出Markdown/PNG/JSON</button>
                 <button className="primary" onClick={() => { setEditingRecordId(previewRecord.id); setNote(revision.thesis_markdown); setRecordTitle(revision.title); setPreviewRecord(null) }}>基于此版本追加修订</button>
               </footer>
             </div>

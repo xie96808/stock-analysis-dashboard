@@ -61,6 +61,9 @@ type Props = {
   activeTool: string
   snapMode: 'off' | 'weak' | 'strong'
   drawings: Drawing[]
+  resetViewRevision: number
+  dataRevision: number
+  preserveViewOnDataChange: boolean
   onCommitDrawings: (next: Drawing[]) => void
   fontScale: 'standard' | 'large' | 'xlarge'
   onHoverBar: (bar: StockBar | null) => void
@@ -162,6 +165,9 @@ export function ChartWorkbench({
   activeTool,
   snapMode,
   drawings,
+  resetViewRevision,
+  dataRevision,
+  preserveViewOnDataChange,
   onCommitDrawings,
   fontScale,
   onHoverBar,
@@ -173,6 +179,9 @@ export function ChartWorkbench({
   const hostRef = useRef<HTMLDivElement>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const candleRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
+  const visibleLogicalRangeRef = useRef<{ from: number; to: number } | null>(null)
+  const viewIdentityRef = useRef('')
+  const appliedDataRevisionRef = useRef(dataRevision)
   const intradayPromptRef = useRef<HTMLDivElement>(null)
   // Keep UI callbacks outside the chart-construction effect. Hovering updates
   // the quote strip in App, which re-renders this component; rebuilding the
@@ -238,6 +247,14 @@ export function ChartWorkbench({
   useEffect(() => {
     const host = hostRef.current
     if (!host || !bars.length) return
+    const viewIdentity = `${symbol}|${timeframe}|${isMinute ? 'minute' : 'daily'}`
+    const dataChanged = appliedDataRevisionRef.current !== dataRevision
+    const restoreRange = viewIdentityRef.current === viewIdentity && (!dataChanged || preserveViewOnDataChange)
+      ? visibleLogicalRangeRef.current
+      : null
+    if (viewIdentityRef.current !== viewIdentity) visibleLogicalRangeRef.current = null
+    viewIdentityRef.current = viewIdentity
+    appliedDataRevisionRef.current = dataRevision
 
     const chart = createChart(host, {
       width: host.clientWidth,
@@ -455,7 +472,8 @@ export function ChartWorkbench({
     }
     refreshGeometryRef.current = updateGeometry
 
-    chart.timeScale().fitContent()
+    if (restoreRange) chart.timeScale().setVisibleLogicalRange(restoreRange)
+    else chart.timeScale().fitContent()
     const mainRatio = nextPane === 1 ? 0.94 : nextPane === 2 ? 0.76 : 0.62
     chart.panes()[0]?.setHeight(Math.round(host.clientHeight * mainRatio))
     if (volumePane != null) chart.panes()[volumePane]?.setHeight(Math.round(host.clientHeight * 0.15))
@@ -507,17 +525,26 @@ export function ChartWorkbench({
     return () => {
       window.clearTimeout(profileTimer)
       observer.disconnect()
+      const visibleRange = chart.timeScale().getVisibleLogicalRange()
+      if (visibleRange) visibleLogicalRangeRef.current = { from: visibleRange.from, to: visibleRange.to }
       if (refreshGeometryRef.current === updateGeometry) refreshGeometryRef.current = () => {}
       chart.remove()
       chartRef.current = null
       candleRef.current = null
     }
-  }, [anchoredRange, bars, byTime, candleTheme, cleanMode, fontScale, indicators, isMinute, latestBar, logPrice, macd, market, timeframe])
+  }, [anchoredRange, bars, byTime, candleTheme, cleanMode, dataRevision, fontScale, indicators, isMinute, latestBar, logPrice, macd, market, preserveViewOnDataChange, symbol, timeframe])
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => refreshGeometryRef.current())
     return () => cancelAnimationFrame(frame)
   }, [chipEstimate])
+
+  useEffect(() => {
+    if (resetViewRevision <= 0 || !chartRef.current) return
+    chartRef.current.timeScale().fitContent()
+    const frame = requestAnimationFrame(() => refreshGeometryRef.current())
+    return () => cancelAnimationFrame(frame)
+  }, [resetViewRevision])
 
   useEffect(() => {
     const series = candleRef.current

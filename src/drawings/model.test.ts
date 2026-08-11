@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { commitDrawingGesture, defaultDrawingStyle, replaceDrawingAnchor, toolToDrawingType, wheelAdjustedPrice, type Drawing } from './model'
+import { commitDrawingGesture, defaultDrawingStyle, drawingLayerClassName, drawingUsesTimeCoordinate, formatMeasurement, replaceDrawingAnchor, toolToDrawingType, wheelAdjustedPrice, type Drawing } from './model'
 
 describe('drawing model', () => {
   it('maps every implemented toolbar tool to a stable drawing type', () => {
     expect(toolToDrawingType('水平线')).toBe('horizontal')
     expect(toolToDrawingType('趋势线')).toBe('trend')
     expect(toolToDrawingType('自由画笔')).toBe('freehand')
+    expect(toolToDrawingType('测量')).toBe('measurement')
     expect(toolToDrawingType('选择')).toBeNull()
   })
 
@@ -13,6 +14,24 @@ describe('drawing model', () => {
     const style = defaultDrawingStyle('highlighter')
     expect(style.width).toBeGreaterThan(10)
     expect(style.opacity).toBeLessThan(0.5)
+  })
+
+  it('keeps the SVG interactive while a drawing is selected for editing', () => {
+    expect(drawingLayerClassName(null, 'line-1')).toContain('has-selection')
+    expect(drawingLayerClassName('trend', null)).toContain('is-creating')
+    expect(drawingLayerClassName(null, null)).toBe('drawing-layer')
+  })
+
+  it('renders horizontal prices without requiring a matching time coordinate', () => {
+    expect(drawingUsesTimeCoordinate('horizontal')).toBe(false)
+    expect(drawingUsesTimeCoordinate('trend')).toBe(true)
+  })
+
+  it('formats price, percentage and elapsed time for measurements', () => {
+    expect(formatMeasurement(
+      { timestampMs: 0, price: 10 },
+      { timestampMs: 2 * 86_400_000, price: 12 },
+    )).toBe('+2.00 · +20.00% · 2天')
   })
 
   it('replaces only the dragged endpoint', () => {

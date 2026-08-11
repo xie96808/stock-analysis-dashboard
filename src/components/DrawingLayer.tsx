@@ -4,6 +4,9 @@ import {
   createDrawingId,
   commitDrawingGesture,
   defaultDrawingStyle,
+  drawingLayerClassName,
+  drawingUsesTimeCoordinate,
+  formatMeasurement,
   replaceDrawingAnchor,
   toolToDrawingType,
   wheelAdjustedPrice,
@@ -138,6 +141,12 @@ export function DrawingLayer({
     return x == null || y == null ? null : { x, y }
   }
 
+  const pointForDrawing = (drawing: Drawing, anchor: DrawingAnchor) => {
+    if (drawingUsesTimeCoordinate(drawing.type) || !candleSeries) return point(anchor)
+    const y = candleSeries.priceToCoordinate(anchor.price)
+    return y == null ? null : { x: width / 2, y }
+  }
+
   const begin = (event: ReactPointerEvent<SVGSVGElement>) => {
     const target = event.target as SVGElement
     const object = target.closest<SVGElement>('[data-drawing-id]')
@@ -244,7 +253,7 @@ export function DrawingLayer({
     <>
       <svg
         ref={svgRef}
-        className={`drawing-layer${drawingType ? ' is-creating' : ''}`}
+        className={drawingLayerClassName(drawingType, selectedId)}
         width={width}
         height={mainPaneHeight}
         aria-label="金融坐标画线层"
@@ -255,7 +264,7 @@ export function DrawingLayer({
         onPointerCancel={() => setGesture(null)}
       >
         {rendered.map((drawing) => {
-          const anchors = drawing.anchors.map(point)
+          const anchors = drawing.anchors.map((anchor) => pointForDrawing(drawing, anchor))
           const first = anchors[0]
           const second = anchors[1]
           const common = {
@@ -289,6 +298,20 @@ export function DrawingLayer({
           }
           const dx = second.x - first.x
           const dy = second.y - first.y
+          if (drawing.type === 'measurement') {
+            const label = formatMeasurement(drawing.anchors[0], drawing.anchors[1])
+            const labelWidth = Math.max(154, label.length * 7.2 + 18)
+            const labelX = Math.max(6, Math.min(width - labelWidth - 6, (first.x + second.x) / 2 - labelWidth / 2))
+            const labelY = Math.max(24, Math.min(mainPaneHeight - 10, (first.y + second.y) / 2 - 10))
+            return <g key={drawing.id} data-drawing-id={drawing.id} className={className}>
+              <line className="drawing-hit-target" x1={first.x} y1={first.y} x2={second.x} y2={second.y} />
+              <line x1={first.x} y1={first.y} x2={second.x} y2={second.y} {...common} />
+              <line x1={first.x} y1={first.y} x2={second.x} y2={first.y} {...common} strokeOpacity={0.35} />
+              <line x1={second.x} y1={first.y} x2={second.x} y2={second.y} {...common} strokeOpacity={0.35} />
+              <rect x={labelX} y={labelY - 18} width={labelWidth} height={24} rx={5} fill="rgba(255,255,255,0.94)" stroke={drawing.style.color} strokeOpacity={0.35} />
+              <text x={labelX + 9} y={labelY - 2} fill={drawing.style.color}>{label}</text>
+            </g>
+          }
           const rayFactor = drawing.type === 'ray' && Math.abs(dx) > 0.5 ? Math.max(1, (width - first.x) / dx) : 1
           const end = { x: first.x + dx * rayFactor, y: first.y + dy * rayFactor }
           if (drawing.type === 'channel') {
@@ -309,7 +332,7 @@ export function DrawingLayer({
         {rendered.flatMap((drawing) => {
           if (drawing.id !== selectedId || drawing.locked || drawing.type === 'freehand' || drawing.type === 'highlighter' || drawing.type === 'text') return []
           return drawing.anchors.flatMap((anchor, anchorIndex) => {
-            const value = point(anchor)
+            const value = pointForDrawing(drawing, anchor)
             if (!value) return []
             const x = drawing.type === 'horizontal' ? Math.max(18, Math.min(width - 112, value.x)) : value.x
             return [<circle

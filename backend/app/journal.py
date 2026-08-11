@@ -6,7 +6,7 @@ import sqlite3
 import uuid
 import zipfile
 from datetime import UTC, datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
@@ -298,6 +298,18 @@ class JournalRepository:
             if self._sha256(records_payload) != manifest["checksums"]["records.json"]:
                 raise ValueError("Export checksum mismatch")
             records = json.loads(records_payload)
+            journal_files: list[tuple[zipfile.ZipInfo, Path]] = []
+            data_root = self.data_dir.resolve()
+            for item in archive.infolist():
+                if item.is_dir() or not item.filename.startswith("journal/"):
+                    continue
+                relative = PurePosixPath(item.filename)
+                if relative.is_absolute() or ".." in relative.parts or relative.parts[0] != "journal":
+                    raise ValueError("Unsafe path in journal export")
+                target = (self.data_dir / Path(*relative.parts)).resolve()
+                if data_root not in target.parents:
+                    raise ValueError("Unsafe path in journal export")
+                journal_files.append((item, target))
             with self.connect() as connection:
                 for record in records:
                     cursor = connection.execute(
@@ -323,11 +335,9 @@ class JournalRepository:
                             ),
                         )
                         imported_revisions += cursor.rowcount
-            for name in archive.namelist():
-                if name.startswith("journal/") and not name.endswith("/"):
-                    target = self.data_dir / name
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    target.write_bytes(archive.read(name))
+            for item, target in journal_files:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(archive.read(item))
         return {"records": imported_records, "revisions": imported_revisions}
 
     def ensure_daily_backup(self) -> Path:

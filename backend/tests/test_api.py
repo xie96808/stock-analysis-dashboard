@@ -17,7 +17,7 @@ def test_health() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["status"] == "ok"
-    assert payload["phase"] == "P7"
+    assert payload["phase"] == "stable"
     assert payload["version"] == "1.0.2"
 
 
@@ -28,6 +28,14 @@ def test_demo_snapshot() -> None:
     assert payload["instrument"]["symbol"] == "001280"
     assert payload["instrument"]["adjustment"] == "qfq"
     assert payload["realtime"] is False
+
+
+def test_market_provider_status_exposes_priority_order() -> None:
+    response = asyncio.run(get("/api/market/providers"))
+    assert response.status_code == 200
+    payload = response.json()
+    assert [item["name"] for item in payload] == ["tencent-public", "yahoo-chart"]
+    assert [item["priority"] for item in payload] == [1, 2]
 
 
 def test_resolve_a_share() -> None:

@@ -41,6 +41,11 @@ export type MarketBarsResponse = {
   cached: boolean
   delayed: boolean
   requested_limit: number
+  provider_chain: string[]
+  fallback_used: boolean
+  stale: boolean
+  freshness_seconds: number
+  quality_issues: string[]
   bars: MarketBar[]
 }
 
@@ -55,6 +60,81 @@ export type MarketQuoteResponse = {
   timestamp: string | null
   source: string
   delayed: boolean
+  fallback_used: boolean
+  quality_issues: string[]
+}
+
+export type MarketProviderStatus = {
+  name: string
+  priority: number
+  healthy: boolean
+  failures: number
+  last_error: string | null
+  last_success_at: string | null
+}
+
+export type BacktestStrategy = 'ma_cross' | 'breakout' | 'macd'
+
+export type BacktestRequest = {
+  symbol: string
+  start_date?: string
+  end_date?: string
+  strategy: BacktestStrategy
+  parameters: Record<string, number>
+  initial_cash: number
+  commission_rate: number
+  minimum_commission: number
+  stamp_tax_rate: number
+  slippage_bps: number
+  lot_size?: number
+}
+
+export type BacktestResult = {
+  symbol: string
+  market: 'CN' | 'HK'
+  strategy: BacktestStrategy
+  parameters: Record<string, number>
+  start_date: string
+  end_date: string
+  execution_model: string
+  data_source: string
+  data_fetched_at: string
+  metrics: {
+    total_return: number; annualized_return: number; benchmark_return: number; max_drawdown: number;
+    sharpe_ratio: number; trade_count: number; win_rate: number; profit_factor: number | null; ending_equity: number;
+  }
+  equity_curve: Array<{ date: string; equity: number; cash: number; position: number; close: number; benchmark: number }>
+  trades: Array<{
+    date: string; side: 'buy' | 'sell'; price: number; quantity: number; gross_amount: number;
+    fees: number; cash_after: number; position_after: number; reason: string; realized_pnl: number | null;
+  }>
+  warnings: string[]
+}
+
+export type PaperPortfolio = {
+  initial_cash: number
+  cash: number
+  position_cost: number
+  realized_pnl: number
+  positions: Array<{
+    symbol: string; name: string; market: 'CN' | 'HK'; quantity: number; cost_value: number; average_cost: number;
+  }>
+  trades: Array<{
+    id: string; symbol: string; name: string; market: 'CN' | 'HK'; side: 'buy' | 'sell'; price: number;
+    quantity: number; fees: number; traded_at: string; note: string; journal_record_id: string | null;
+    gross_amount: number; realized_pnl: number | null; cash_after: number;
+  }>
+}
+
+export type PaperTradeInput = {
+  symbol: string
+  name: string
+  market: 'CN' | 'HK'
+  side: 'buy' | 'sell'
+  price: number
+  quantity: number
+  note?: string
+  journal_record_id?: string
 }
 
 export type JournalRevision = {
@@ -148,7 +228,16 @@ async function requestJson<T>(path: string, signal?: AbortSignal, init?: Request
     headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...init?.headers },
     signal,
   })
-  if (!response.ok) throw new Error(`API ${response.status}: ${path}`)
+  if (!response.ok) {
+    let detail = ''
+    try {
+      const payload = await response.json() as { detail?: unknown }
+      if (typeof payload.detail === 'string') detail = payload.detail
+    } catch {
+      // Preserve the status fallback when the server does not return JSON.
+    }
+    throw new Error(detail || `API ${response.status}: ${path}`)
+  }
   return response.json() as Promise<T>
 }
 
@@ -187,6 +276,26 @@ export function getMarketBars(
 
 export function getMarketQuote(symbol: string, signal?: AbortSignal) {
   return requestJson<MarketQuoteResponse>(`/api/market/quote/${encodeURIComponent(symbol)}`, signal)
+}
+
+export function getMarketProviders(signal?: AbortSignal) {
+  return requestJson<MarketProviderStatus[]>('/api/market/providers', signal)
+}
+
+export function runBacktest(payload: BacktestRequest, signal?: AbortSignal) {
+  return requestJson<BacktestResult>('/api/backtests/run', signal, { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export function getPaperPortfolio(signal?: AbortSignal) {
+  return requestJson<PaperPortfolio>('/api/portfolio', signal)
+}
+
+export function createPaperTrade(payload: PaperTradeInput, signal?: AbortSignal) {
+  return requestJson<PaperPortfolio>('/api/portfolio/trades', signal, { method: 'POST', body: JSON.stringify(payload) })
+}
+
+export function deletePaperTrade(tradeId: string, signal?: AbortSignal) {
+  return requestJson<PaperPortfolio>(`/api/portfolio/trades/${encodeURIComponent(tradeId)}`, signal, { method: 'DELETE' })
 }
 
 export function listJournalRecords(options: { dateKey?: string; symbol?: string; includeDeleted?: boolean } = {}, signal?: AbortSignal) {
