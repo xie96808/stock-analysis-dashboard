@@ -11,6 +11,7 @@ export type DrawingStyle = {
   width: number
   opacity: number
   dash?: 'solid' | 'dashed'
+  fontSize?: number
 }
 
 export type Drawing = {
@@ -40,7 +41,7 @@ export function defaultDrawingStyle(type: DrawingType): DrawingStyle {
   if (type === 'rectangle') return { color: '#2962e8', width: 1.7, opacity: 0.16 }
   if (type === 'profile-range') return { color: '#8b61d6', width: 1.6, opacity: 0.1, dash: 'dashed' }
   if (type === 'measurement') return { color: '#566274', width: 1.5, opacity: 0.9, dash: 'dashed' }
-  if (type === 'text') return { color: '#343a46', width: 1.5, opacity: 1 }
+  if (type === 'text') return { color: '#343a46', width: 1.5, opacity: 1, fontSize: 16 }
   return { color: '#e84f63', width: 1.8, opacity: 0.95 }
 }
 
@@ -96,6 +97,17 @@ export function wheelAdjustedPrice(price: number, deltaY: number, multiplier = 1
   const direction = deltaY < 0 ? 1 : deltaY > 0 ? -1 : 0
   if (!direction) return price
   return Math.max(0.01, Number((price + direction * 0.01 * multiplier).toFixed(4)))
+}
+
+export function wheelAdjustedFontSize(fontSize: number | undefined, deltaY: number): number {
+  const current = Number.isFinite(fontSize) ? Number(fontSize) : 16
+  const direction = deltaY < 0 ? 1 : deltaY > 0 ? -1 : 0
+  return Math.max(10, Math.min(72, current + direction))
+}
+
+export function movePointDrawing(drawing: Drawing, anchor: DrawingAnchor): Drawing {
+  if (drawing.anchors.length !== 1) return drawing
+  return { ...drawing, anchors: [anchor] }
 }
 
 export function commitDrawingGesture(drawings: Drawing[], draft: Drawing, isCreate: boolean): Drawing[] {

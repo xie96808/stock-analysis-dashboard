@@ -26,6 +26,7 @@ import { calculateChipCostEstimate } from '../chips/calculate'
 import { distributionVisibility, type DistributionMode } from '../distributions/model'
 import { extendedChipPanelHeight } from '../chips/panelPosition'
 import { resolveChipOverlayGeometry } from '../chips/geometry'
+import { barsInVisibleTimeRange } from '../profile/visibleRange'
 
 export type { DistributionMode } from '../distributions/model'
 export type ProfileLayout = 'overlay' | 'dock'
@@ -418,6 +419,7 @@ export function ChartWorkbench({
     const updateGeometry = () => {
       const currentChipEstimate = chipEstimateRef.current
       const visibleRange = chart.timeScale().getVisibleLogicalRange()
+      const visibleTimeRange = chart.timeScale().getVisibleRange()
       if (visibleRange) {
         host.dataset.visibleLogicalFrom = visibleRange.from.toFixed(4)
         host.dataset.visibleLogicalTo = visibleRange.to.toFixed(4)
@@ -425,9 +427,7 @@ export function ChartWorkbench({
         delete host.dataset.visibleLogicalFrom
         delete host.dataset.visibleLogicalTo
       }
-      const visibleBars = visibleRange
-        ? bars.slice(Math.max(0, Math.floor(visibleRange.from)), Math.min(bars.length, Math.ceil(visibleRange.to) + 1))
-        : bars
+      const visibleBars = barsInVisibleTimeRange(bars, visibleTimeRange)
       const anchoredBars = anchoredRange
         ? bars.filter((bar) => {
           const timestamp = bar.date.includes(' ')
@@ -436,10 +436,13 @@ export function ChartWorkbench({
           return timestamp >= anchoredRange[0] && timestamp <= anchoredRange[1]
         })
         : []
-      const profileResult = calculateVolumeProfile(anchoredBars.length ? anchoredBars : visibleBars.length ? visibleBars : bars, 48, 0.7, logPrice)
+      const profileBars = anchoredBars.length ? anchoredBars : visibleTimeRange ? visibleBars : bars
+      host.dataset.profileBarCount = String(profileBars.length)
+      const profileResult = calculateVolumeProfile(profileBars, 48, 0.7, logPrice)
+      const mainPaneHeight = chart.panes()[0]?.getHeight() ?? host.clientHeight * 0.64
       const profile = profileResult.rows.flatMap((row) => {
         const y = candleSeries.priceToCoordinate(row.price)
-        return y == null ? [] : [{
+        return y == null || y < 0 || y > mainPaneHeight ? [] : [{
           y,
           width: row.total,
           sell: row.sell,
@@ -449,7 +452,10 @@ export function ChartWorkbench({
           price: row.price,
         }]
       })
-      const mainPaneHeight = chart.panes()[0]?.getHeight() ?? host.clientHeight * 0.64
+      const visibleProfileCoordinate = (price: number) => {
+        const coordinate = candleSeries.priceToCoordinate(price)
+        return coordinate != null && coordinate >= 0 && coordinate <= mainPaneHeight ? coordinate : null
+      }
       const chipGeometry = resolveChipOverlayGeometry(
         currentChipEstimate,
         (price) => candleSeries.priceToCoordinate(price),
@@ -461,9 +467,9 @@ export function ChartWorkbench({
           poc: profileResult.poc,
           vah: profileResult.vah,
           val: profileResult.val,
-          pocY: candleSeries.priceToCoordinate(profileResult.poc),
-          vahY: candleSeries.priceToCoordinate(profileResult.vah),
-          valY: candleSeries.priceToCoordinate(profileResult.val),
+          pocY: visibleProfileCoordinate(profileResult.poc),
+          vahY: visibleProfileCoordinate(profileResult.vah),
+          valY: visibleProfileCoordinate(profileResult.val),
         },
         profileSource: anchoredBars.length ? 'anchored' : 'visible',
         chips: chipGeometry.rows,

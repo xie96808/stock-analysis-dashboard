@@ -58,6 +58,7 @@ export function ChipCostPanel({
   const [summaryVisible, setSummaryVisible] = useState(true)
   const [summaryOffset, setSummaryOffset] = useState<Point>({ x: 0, y: 0 })
   const [summaryDragging, setSummaryDragging] = useState(false)
+  const [selectedChipPrice, setSelectedChipPrice] = useState<number | null>(null)
 
   if (!estimate.rows.length) return null
   const max = Math.max(...rows.map((row) => row.weight), 1e-12)
@@ -68,6 +69,9 @@ export function ChipCostPanel({
       ? Math.min(24, Math.max(0, mainPaneHeight - averageY - 18))
       : -Math.min(24, Math.max(0, averageY - 18))
     : 0
+  const selectedChip = selectedChipPrice == null
+    ? null
+    : rows.find((row) => Math.abs(row.price - selectedChipPrice) < 1e-8) ?? null
 
   const startSummaryDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (event.button !== 0 || !panelRef.current || !summaryRef.current) return
@@ -130,16 +134,31 @@ export function ChipCostPanel({
         </div>
       </header>
 
-      <div className="chip-profile-bars" aria-hidden="true">
+      <div className="chip-profile-bars" role="list" aria-label="筹码价格分布，可点击查看明细">
         {rows.map((row, index) => (
-          <i
+          <button
+            type="button"
             key={`${row.price}-${index}`}
-            className={`${row.profitable ? 'is-profit' : 'is-loss'}${Math.abs(row.price - estimate.poc) < 1e-8 ? ' is-poc' : ''}`}
+            className={`${row.profitable ? 'is-profit' : 'is-loss'}${Math.abs(row.price - estimate.poc) < 1e-8 ? ' is-poc' : ''}${selectedChip?.price === row.price ? ' is-selected' : ''}`}
             style={{ top: row.y, width: `${Math.max(2, row.weight / max * 100)}%`, height: rowHeight }}
             title={`${row.price.toFixed(2)} · ${(row.weight * 100).toFixed(2)}%`}
+            aria-label={`${row.price.toFixed(2)}元，筹码占比${(row.weight * 100).toFixed(2)}%，${row.profitable ? '获利筹码' : '套牢筹码'}`}
+            onClick={() => setSelectedChipPrice((current) => current === row.price ? null : row.price)}
           />
         ))}
       </div>
+
+      {selectedChip && (
+        <div
+          className="chip-row-detail"
+          role="status"
+          style={{ top: Math.max(58, Math.min(mainPaneHeight - 44, selectedChip.y)) }}
+        >
+          <strong>{selectedChip.price.toFixed(2)}</strong>
+          <span>{(selectedChip.weight * 100).toFixed(2)}%</span>
+          <em>{selectedChip.profitable ? '获利筹码' : '套牢筹码'}</em>
+        </div>
+      )}
 
       {panelHeight > mainPaneHeight && (
         <div

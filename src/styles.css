@@ -935,6 +935,32 @@ button {
   height: 19px;
 }
 
+.drawing-rail button.has-hidden-drawings {
+  color: var(--blue);
+}
+
+.drawing-rail button.clear-all-drawings {
+  color: #c94659;
+}
+
+.rail-count {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  display: grid;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  place-items: center;
+  border: 1px solid #fff;
+  border-radius: 999px;
+  background: var(--blue);
+  color: #fff;
+  font-size: 8px;
+  font-weight: 750;
+  line-height: 1;
+}
+
 .rail-divider {
   width: 24px;
   height: 1px;
@@ -1303,26 +1329,75 @@ button {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(255, 255, 255, 0.98));
 }
 
-.chip-profile-bars > i {
+.chip-profile-bars > button {
   position: absolute;
   right: 0;
   display: block;
   min-width: 3px;
+  padding: 0;
+  border: 0;
   transform: translateY(-50%);
   opacity: 0.78;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
-.chip-profile-bars > i.is-profit {
+.chip-profile-bars > button.is-profit {
   background: linear-gradient(90deg, rgba(230, 80, 107, 0.68), #e6506b);
 }
 
-.chip-profile-bars > i.is-loss {
+.chip-profile-bars > button.is-loss {
   background: linear-gradient(90deg, rgba(76, 135, 220, 0.6), #4c87dc);
 }
 
-.chip-profile-bars > i.is-poc {
+.chip-profile-bars > button.is-poc {
   opacity: 1;
   box-shadow: 0 0 0 1px rgba(43, 52, 68, 0.16);
+}
+
+.chip-profile-bars > button:hover,
+.chip-profile-bars > button:focus-visible,
+.chip-profile-bars > button.is-selected {
+  z-index: 3;
+  opacity: 1;
+  outline: 2px solid rgba(41, 98, 232, 0.68);
+  outline-offset: 1px;
+}
+
+.chip-row-detail {
+  position: absolute;
+  right: 10px;
+  z-index: 6;
+  display: flex;
+  min-width: 154px;
+  height: 36px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 9px;
+  transform: translateY(-50%);
+  border: 1px solid rgba(174, 184, 199, 0.84);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 5px 18px rgba(31, 40, 62, 0.14);
+  color: #303744;
+  pointer-events: none;
+}
+
+.chip-row-detail strong {
+  font-size: 14px;
+}
+
+.chip-row-detail span {
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 720;
+}
+
+.chip-row-detail em {
+  margin-left: auto;
+  color: #747d8b;
+  font-size: 10px;
+  font-style: normal;
 }
 
 .chip-reference-line {
@@ -1581,7 +1656,6 @@ button {
 
 .drawing-layer text.drawing-object,
 .drawing-object text {
-  font-size: 14px;
   font-weight: 650;
   paint-order: stroke;
   stroke: rgba(255, 255, 255, 0.9);
@@ -1705,6 +1779,7 @@ button {
   right: 79px;
   width: min(31%, 370px);
   z-index: 3;
+  overflow: hidden;
   pointer-events: none;
 }
 

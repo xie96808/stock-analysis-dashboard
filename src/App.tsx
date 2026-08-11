@@ -370,6 +370,7 @@ export default function App() {
   const adjustmentLabel = adjustmentLabels[adjustment]
   const workspaceKey = `${instrument.key}::${workspace}`
   const drawings = drawingStore.workspaces[workspaceKey] ?? []
+  const hiddenDrawingCount = drawings.filter((drawing) => drawing.hidden).length
   const handleHoverBar = useCallback((bar: StockBar | null) => setHoverBar(bar), [])
   const handleSelectBar = useCallback((bar: StockBar) => {
     if (timeframe === '日K') setSelectedDay(bar)
@@ -827,6 +828,26 @@ export default function App() {
       replaceWorkspaceDrawings(next)
       return { past: [...current.past, drawings], future: current.future.slice(1) }
     })
+  }
+
+  const restoreHiddenDrawings = () => {
+    if (!hiddenDrawingCount) {
+      notify('当前工作区没有隐藏画线')
+      return
+    }
+    commitDrawings(drawings.map((drawing) => ({ ...drawing, hidden: false })))
+    notify(`已重新显示${hiddenDrawingCount}个隐藏对象`)
+  }
+
+  const clearAllDrawings = () => {
+    if (!drawings.length) {
+      notify('当前工作区没有画线对象')
+      return
+    }
+    const count = drawings.length
+    commitDrawings([])
+    setActiveTool('选择')
+    notify(`已清除${count}个画线对象，可点击撤销恢复`)
   }
 
   const addRecord = async () => {
@@ -1410,6 +1431,13 @@ export default function App() {
           <span className="rail-divider" />
           <button aria-label="撤销" data-tooltip="撤销" onClick={undoDrawing}><Icon name="undo" /></button>
           <button aria-label="重做" data-tooltip="重做" onClick={redoDrawing}><Icon name="redo" /></button>
+          <button
+            aria-label={`显示隐藏画线${hiddenDrawingCount ? `（${hiddenDrawingCount}）` : ''}`}
+            data-tooltip={hiddenDrawingCount ? `显示隐藏画线 · ${hiddenDrawingCount}` : '显示隐藏画线'}
+            className={hiddenDrawingCount ? 'has-hidden-drawings' : ''}
+            onClick={restoreHiddenDrawings}
+          ><Icon name="layers" />{hiddenDrawingCount > 0 && <span className="rail-count">{hiddenDrawingCount}</span>}</button>
+          <button className="clear-all-drawings" aria-label="清除全部画线" data-tooltip="清除全部 · 可撤销" onClick={clearAllDrawings}><Icon name="eraser" /></button>
         </aside>
 
         <section className="chart-region">
