@@ -27,6 +27,7 @@ import { distributionVisibility, type DistributionMode } from '../distributions/
 import { extendedChipPanelHeight } from '../chips/panelPosition'
 import { resolveChipOverlayGeometry } from '../chips/geometry'
 import { barsInVisibleTimeRange } from '../profile/visibleRange'
+import { preservePriceModeViewport } from '../chart/priceModeViewport'
 
 export type { DistributionMode } from '../distributions/model'
 export type ProfileLayout = 'overlay' | 'dock'
@@ -195,10 +196,12 @@ export function ChartWorkbench({
   const onSelectBarRef = useRef(onSelectBar)
   const onSelectChipDateRef = useRef(onSelectChipDate)
   const activeToolRef = useRef(activeTool)
+  const logPriceRef = useRef(logPrice)
   onHoverBarRef.current = onHoverBar
   onSelectBarRef.current = onSelectBar
   onSelectChipDateRef.current = onSelectChipDate
   activeToolRef.current = activeTool
+  logPriceRef.current = logPrice
   const [intradayPrompt, setIntradayPrompt] = useState<IntradayPrompt | null>(null)
   const [geometry, setGeometry] = useState<OverlayGeometry>({
     profile: [],
@@ -438,7 +441,7 @@ export function ChartWorkbench({
         : []
       const profileBars = anchoredBars.length ? anchoredBars : visibleTimeRange ? visibleBars : bars
       host.dataset.profileBarCount = String(profileBars.length)
-      const profileResult = calculateVolumeProfile(profileBars, 48, 0.7, logPrice)
+      const profileResult = calculateVolumeProfile(profileBars, 48, 0.7, logPriceRef.current)
       const mainPaneHeight = chart.panes()[0]?.getHeight() ?? host.clientHeight * 0.64
       const profile = profileResult.rows.flatMap((row) => {
         const y = candleSeries.priceToCoordinate(row.price)
@@ -547,7 +550,7 @@ export function ChartWorkbench({
       chartRef.current = null
       candleRef.current = null
     }
-  }, [anchoredRange, bars, byTime, candleTheme, cleanMode, dataRevision, fontScale, indicators, isMinute, latestBar, logPrice, macd, market, preserveViewOnDataChange, symbol, timeframe])
+  }, [anchoredRange, bars, byTime, candleTheme, cleanMode, dataRevision, fontScale, indicators, isMinute, latestBar, macd, market, preserveViewOnDataChange, symbol, timeframe])
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => refreshGeometryRef.current())
@@ -565,12 +568,21 @@ export function ChartWorkbench({
     const series = candleRef.current
     const chart = chartRef.current
     if (!series || !chart) return
-    series.priceScale().applyOptions({ mode: percentPrice ? PriceScaleMode.Percentage : logPrice ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal })
-    requestAnimationFrame(() => {
-      chart.timeScale().scrollToPosition(isMinute ? 3 : 6, false)
-      window.dispatchEvent(new Event('resize'))
+    // The candle series includes future whitespace so investors can draw and
+    // project forward. scrollToPosition() anchors to that future tail, which
+    // used to move every candle off-screen after a price-mode switch. Capture
+    // and restore the exact investor-controlled viewport instead.
+    const viewport = preservePriceModeViewport(chart.timeScale().getVisibleLogicalRange())
+    series.priceScale().applyOptions({
+      autoScale: true,
+      mode: percentPrice ? PriceScaleMode.Percentage : logPrice ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
     })
-  }, [isMinute, logPrice, percentPrice])
+    const frame = requestAnimationFrame(() => {
+      if (viewport) chart.timeScale().setVisibleLogicalRange(viewport)
+      refreshGeometryRef.current()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [logPrice, percentPrice])
 
   useEffect(() => {
     setIntradayPrompt(null)
