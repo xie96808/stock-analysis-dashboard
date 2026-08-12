@@ -12,8 +12,11 @@ import {
   listJournalRecords,
   permanentlyDeleteJournalRecord,
   recycleJournalRecord,
+  resolveInstrument,
   restoreJournalRecord,
+  searchInstruments,
   type ApiHealth,
+  type InstrumentSuggestion,
   type JournalRecordDetail,
   type JournalRecordSummary,
   type MarketAdjustment,
@@ -43,6 +46,8 @@ import { marketSessionState } from './market/refreshSchedule'
 import { parseDrawingStore, parseIndicatorConfig, shanghaiDateKey } from './state/preferences'
 import { evaluateAlerts, parseAlertEvents, parseAlertRules, selectAlertBars, type AlertEvent, type AlertRule } from './alerts/model'
 import { parseWatchlist, upsertWatchlist, type WatchlistItem } from './watchlist/model'
+import { isCompleteMarketSymbol } from './search/model'
+import { cacheSuggestions, getCachedSuggestions } from './search/cache'
 import './styles.css'
 
 const LazyMarkdown = lazy(() => import('react-markdown'))
@@ -240,7 +245,12 @@ export default function App() {
   const [dailyAlertBars, setDailyAlertBars] = useState<StockBar[]>(fixtureBars)
   const [instrument, setInstrument] = useState<MarketInstrument>(fallbackInstrument)
   const [quote, setQuote] = useState<MarketQuoteResponse | null>(null)
-  const [symbolInput, setSymbolInput] = useState('001280')
+  const [symbolInput, setSymbolInput] = useState('')
+  const [symbolSuggestions, setSymbolSuggestions] = useState<InstrumentSuggestion[]>([])
+  const [symbolSearchOpen, setSymbolSearchOpen] = useState(false)
+  const [symbolSearchLoading, setSymbolSearchLoading] = useState(false)
+  const [instrumentSwitchLabel, setInstrumentSwitchLabel] = useState<string | null>(null)
+  const [symbolSuggestionIndex, setSymbolSuggestionIndex] = useState(0)
   const [activeSymbol, setActiveSymbol] = useState('001280')
   const [adjustment, setAdjustment] = useState<MarketAdjustment>('qfq')
   const [marketState, setMarketState] = useState<'loading' | 'ready' | 'fallback' | 'error'>('loading')
@@ -305,6 +315,9 @@ export default function App() {
     const saved = window.localStorage.getItem('dashboard-font-scale')
     return saved === 'standard' || saved === 'xlarge' ? saved : 'large'
   })
+  const [colorMode, setColorMode] = useState<'light' | 'dark'>(() => (
+    window.localStorage.getItem('dashboard-color-mode-v1') === 'dark' ? 'dark' : 'light'
+  ))
   const [apiHealth, setApiHealth] = useState<ApiHealth | null>(null)
   const [apiState, setApiState] = useState<'connecting' | 'ready' | 'offline'>('connecting')
   const [toast, setToast] = useState('正在连接本地行情与研究日志')
@@ -362,6 +375,7 @@ export default function App() {
   const adjustmentLabel = adjustmentLabels[adjustment]
   const workspaceKey = `${instrument.key}::${workspace}`
   const drawings = drawingStore.workspaces[workspaceKey] ?? []
+  const hiddenDrawingCount = drawings.filter((drawing) => drawing.hidden).length
   const handleHoverBar = useCallback((bar: StockBar | null) => setHoverBar(bar), [])
   const handleSelectBar = useCallback((bar: StockBar) => {
     if (timeframe === '日K') setSelectedDay(bar)
@@ -425,6 +439,10 @@ export default function App() {
   }, [fontScale])
 
   useEffect(() => {
+    window.localStorage.setItem('dashboard-color-mode-v1', colorMode)
+  }, [colorMode])
+
+  useEffect(() => {
     window.localStorage.setItem('dashboard-auto-refresh-v1', String(autoRefreshEnabled))
   }, [autoRefreshEnabled])
 
@@ -439,6 +457,46 @@ export default function App() {
   useEffect(() => {
     window.localStorage.setItem('dashboard-watchlist-v1', JSON.stringify(watchlist))
   }, [watchlist])
+
+  useEffect(() => {
+    const query = symbolInput.trim()
+    if (!query) {
+      setSymbolSuggestions([])
+      setSymbolSearchOpen(false)
+      setSymbolSearchLoading(false)
+      return
+    }
+    const cached = getCachedSuggestions(query)
+    if (cached) {
+      setSymbolSuggestions(cached)
+      setSymbolSuggestionIndex(0)
+      setSymbolSearchOpen(true)
+      setSymbolSearchLoading(false)
+      return
+    }
+    const controller = new AbortController()
+    const timer = window.setTimeout(() => {
+      setSymbolSearchLoading(true)
+      searchInstruments(query, 5, controller.signal)
+        .then((results) => {
+          cacheSuggestions(query, results)
+          setSymbolSuggestions(results)
+          setSymbolSuggestionIndex(0)
+          setSymbolSearchOpen(true)
+        })
+        .catch((error: unknown) => {
+          if (error instanceof DOMException && error.name === 'AbortError') return
+          setSymbolSuggestions([])
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setSymbolSearchLoading(false)
+        })
+    }, 80)
+    return () => {
+      window.clearTimeout(timer)
+      controller.abort()
+    }
+  }, [symbolInput])
 
   useEffect(() => {
     const updateSession = () => setAutoRefreshSession(marketSessionState(new Date(), instrument.market))
@@ -553,11 +611,12 @@ export default function App() {
       setMarketRefreshing(true)
     } else {
       setMarketState('loading')
-      setChipBars([])
       setSelectedDay(null)
       setIntradayPoints([])
       setHoverBar(null)
-      setQuote(null)
+      // Keep the previous chart visible under the explicit loading overlay.
+      // Replacing it only after all required datasets arrive avoids a blank,
+      // flickering workspace during search and watchlist navigation.
     }
     const selectedTimeframe = timeframeValues[timeframe]
     const primaryBarsRequest = getMarketBars(activeSymbol, {
@@ -583,13 +642,9 @@ export default function App() {
         limit: 2000,
         refresh: forceRefresh,
       }, controller.signal)
-    Promise.all([
-      primaryBarsRequest,
-      getMarketQuote(activeSymbol, controller.signal).catch(() => null),
-      chipBarsRequest.catch(() => null),
-      alertBarsRequest.catch(() => null),
-    ])
-      .then(([response, currentQuote, chipResponse, alertResponse]) => {
+    setQuote(null)
+    primaryBarsRequest
+      .then((response) => {
         if (requestId !== marketRequestIdRef.current) return
         const nextBars = toStockBars(response)
         if (!nextBars.length) throw new Error('行情源未返回K线')
@@ -604,10 +659,9 @@ export default function App() {
         }
         setChartDataRevision((current) => ({ id: current.id + 1, preserveView: forceRefresh }))
         setBars(nextBars)
-        setChipBars(chipResponse ? toStockBars(chipResponse) : selectedTimeframe === '1d' ? nextBars : [])
-        setDailyAlertBars(alertResponse ? toStockBars(alertResponse) : [])
+        setChipBars(selectedTimeframe === '1d' && chipAdjustment === adjustment ? nextBars : [])
+        setDailyAlertBars(selectedTimeframe === '1d' && adjustment === 'qfq' ? nextBars : [])
         setInstrument(response.instrument)
-        setQuote(currentQuote)
         setMarketMeta({
           source: response.source,
           cached: response.cached,
@@ -620,6 +674,7 @@ export default function App() {
           providerChain: response.provider_chain,
         })
         setMarketState('ready')
+        setInstrumentSwitchLabel(null)
         if (forceRefresh) notify(`已刷新${response.instrument.name ?? response.instrument.symbol}最新行情`)
       })
       .catch((error: unknown) => {
@@ -639,15 +694,39 @@ export default function App() {
             fallbackUsed: false, stale: false, freshnessSeconds: 0, qualityIssues: [], providerChain: [],
           })
           setMarketState('fallback')
+          setInstrumentSwitchLabel(null)
           notify('行情服务暂未连接，已保留可交互样例数据')
         } else {
           setMarketState('error')
+          setInstrumentSwitchLabel(null)
           notify(error instanceof Error ? `代码或行情读取失败：${error.message}` : '代码或行情读取失败')
         }
       })
       .finally(() => {
         if (requestId === marketRequestIdRef.current) setMarketRefreshing(false)
       })
+
+    getMarketQuote(activeSymbol, controller.signal)
+      .then((currentQuote) => {
+        if (requestId === marketRequestIdRef.current) setQuote(currentQuote)
+      })
+      .catch(() => null)
+
+    if (chipBarsRequest !== primaryBarsRequest) {
+      chipBarsRequest
+        .then((response) => {
+          if (requestId === marketRequestIdRef.current) setChipBars(toStockBars(response))
+        })
+        .catch(() => null)
+    }
+
+    if (alertBarsRequest !== primaryBarsRequest) {
+      alertBarsRequest
+        .then((response) => {
+          if (requestId === marketRequestIdRef.current) setDailyAlertBars(toStockBars(response))
+        })
+        .catch(() => null)
+    }
     return () => controller.abort()
   }, [activeSymbol, adjustment, marketRefreshRevision, notify, timeframe])
 
@@ -683,17 +762,59 @@ export default function App() {
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [closeIntraday, selectedDay])
 
-  const submitSymbol = (event: FormEvent<HTMLFormElement>) => {
+  const loadSuggestion = useCallback((suggestion: InstrumentSuggestion) => {
+    setInstrumentSwitchLabel(`${suggestion.name} · ${suggestion.symbol}`)
+    setActiveSymbol(suggestion.input)
+    setSymbolInput('')
+    setSymbolSuggestions([])
+    setSymbolSearchOpen(false)
+    setSymbolSuggestionIndex(0)
+    notify(`正在加载${suggestion.name}（${suggestion.symbol}）`)
+  }, [notify])
+
+  const submitSymbol = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
     const value = symbolInput.trim()
     if (!value) {
       notify('请输入A股或港股代码')
       return
     }
-    setActiveSymbol(value)
+    const selected = symbolSuggestions[symbolSuggestionIndex] ?? symbolSuggestions[0]
+    if (selected) {
+      loadSuggestion(selected)
+      return
+    }
+    try {
+      if (isCompleteMarketSymbol(value)) {
+        setInstrumentSwitchLabel(value)
+        const resolved = await resolveInstrument(value)
+        setInstrumentSwitchLabel(`${resolved.name ?? resolved.symbol} · ${resolved.symbol}`)
+        setActiveSymbol(resolved.provider_symbol)
+        setSymbolInput('')
+        setSymbolSuggestions([])
+        setSymbolSearchOpen(false)
+        notify(`正在加载${resolved.symbol}`)
+        return
+      }
+      const suggestions = await searchInstruments(value, 1)
+      if (suggestions[0]) {
+        loadSuggestion(suggestions[0])
+        return
+      }
+      const resolved = await resolveInstrument(value)
+      setInstrumentSwitchLabel(`${resolved.name ?? resolved.symbol} · ${resolved.symbol}`)
+      setActiveSymbol(resolved.provider_symbol)
+      setSymbolInput('')
+      setSymbolSuggestions([])
+      setSymbolSearchOpen(false)
+      notify(`正在加载${resolved.symbol}`)
+    } catch (error) {
+      setInstrumentSwitchLabel(null)
+      notify(error instanceof Error ? `未找到“${value}”：${error.message}` : `未找到“${value}”`)
+    }
   }
 
-  const addCurrentToWatchlist = () => {
+  const toggleCurrentWatchlist = () => {
     const item: WatchlistItem = {
       key: instrument.key,
       symbol: instrument.symbol,
@@ -706,12 +827,15 @@ export default function App() {
       reviewedAt: null,
     }
     const existed = watchlist.some((entry) => entry.key === item.key)
-    setWatchlist((current) => upsertWatchlist(current, item))
-    notify(existed ? `${displayName}已在自选股中` : `已将${displayName}加入自选股`)
+    setWatchlist((current) => existed
+      ? current.filter((entry) => entry.key !== item.key)
+      : upsertWatchlist(current, item))
+    notify(existed ? `已将${displayName}移出自选股` : `已将${displayName}加入自选股`)
   }
 
   const selectWatchlistItem = (item: WatchlistItem) => {
-    setSymbolInput(item.symbol)
+    setSymbolInput('')
+    setInstrumentSwitchLabel(`${item.name} · ${item.symbol}`)
     setActiveSymbol(item.symbol)
     setWatchlistOpen(false)
     notify(`正在加载自选股：${item.name}`)
@@ -751,6 +875,26 @@ export default function App() {
       replaceWorkspaceDrawings(next)
       return { past: [...current.past, drawings], future: current.future.slice(1) }
     })
+  }
+
+  const restoreHiddenDrawings = () => {
+    if (!hiddenDrawingCount) {
+      notify('当前工作区没有隐藏画线')
+      return
+    }
+    commitDrawings(drawings.map((drawing) => ({ ...drawing, hidden: false })))
+    notify(`已重新显示${hiddenDrawingCount}个隐藏对象`)
+  }
+
+  const clearAllDrawings = () => {
+    if (!drawings.length) {
+      notify('当前工作区没有画线对象')
+      return
+    }
+    const count = drawings.length
+    commitDrawings([])
+    setActiveTool('选择')
+    notify(`已清除${count}个画线对象，可点击撤销恢复`)
   }
 
   const addRecord = async () => {
@@ -981,7 +1125,7 @@ export default function App() {
   }
 
   return (
-    <div className="app-shell" data-font-scale={fontScale}>
+    <div className="app-shell" data-font-scale={fontScale} data-color-mode={colorMode}>
       <header className="app-header">
         <div className="brand" aria-label="研判看板">
           <span className="brand-mark">研</span>
@@ -993,18 +1137,79 @@ export default function App() {
           <Icon name="search" />
           <input
             value={symbolInput}
-            onChange={(event) => setSymbolInput(event.target.value)}
+            onChange={(event) => {
+              setSymbolInput(event.target.value)
+              setSymbolSuggestions([])
+              setSymbolSearchOpen(Boolean(event.target.value.trim()))
+              setSymbolSuggestionIndex(0)
+            }}
+            onFocus={() => {
+              if (symbolInput.trim()) setSymbolSearchOpen(true)
+            }}
+            onBlur={() => window.setTimeout(() => setSymbolSearchOpen(false), 120)}
             onKeyDown={(event) => {
-              if (event.key !== 'Enter') return
-              event.preventDefault()
-              event.currentTarget.form?.requestSubmit()
+              if (event.key === 'ArrowDown' && symbolSuggestions.length) {
+                event.preventDefault()
+                setSymbolSearchOpen(true)
+                setSymbolSuggestionIndex((current) => (current + 1) % symbolSuggestions.length)
+              } else if (event.key === 'ArrowUp' && symbolSuggestions.length) {
+                event.preventDefault()
+                setSymbolSearchOpen(true)
+                setSymbolSuggestionIndex((current) => (current - 1 + symbolSuggestions.length) % symbolSuggestions.length)
+              } else if (event.key === 'Escape') {
+                setSymbolSearchOpen(false)
+              } else if (event.key === 'Enter') {
+                event.preventDefault()
+                event.currentTarget.form?.requestSubmit()
+              }
             }}
             aria-label="股票代码"
-            placeholder="A股 / 港股代码"
+            aria-autocomplete="list"
+            aria-expanded={symbolSearchOpen}
+            aria-controls="symbol-suggestions"
+            autoComplete="off"
+            placeholder="代码 / 名称"
           />
+          {symbolInput && (
+            <button
+              className="symbol-search-clear"
+              type="button"
+              aria-label="清空搜索"
+              title="清空搜索"
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => {
+                setSymbolInput('')
+                setSymbolSuggestions([])
+                setSymbolSearchOpen(false)
+              }}
+            >×</button>
+          )}
           <button className="search-market" type="submit" title="加载代码">
             {marketState === 'loading' ? '…' : instrument.market === 'HK' ? 'HK' : instrument.exchange === 'SSE' ? 'SH' : instrument.exchange === 'BSE' ? 'BJ' : 'SZ'}
           </button>
+          {symbolSearchOpen && (
+            <div className="symbol-suggestions" id="symbol-suggestions" role="listbox" aria-label="标的联想">
+              {symbolSearchLoading && !symbolSuggestions.length ? (
+                <span className="symbol-suggestion-status">正在查找…</span>
+              ) : symbolSuggestions.length ? symbolSuggestions.map((suggestion, index) => (
+                <button
+                  key={`${suggestion.exchange}:${suggestion.symbol}`}
+                  type="button"
+                  role="option"
+                  aria-selected={index === symbolSuggestionIndex}
+                  className={index === symbolSuggestionIndex ? 'is-active' : ''}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setSymbolSuggestionIndex(index)}
+                  onClick={() => loadSuggestion(suggestion)}
+                >
+                  <span><strong>{suggestion.name}</strong><small>{suggestion.asset_type === 'etf' ? 'ETF' : suggestion.market === 'HK' ? '港股' : 'A股'}</small></span>
+                  <em>{suggestion.symbol}</em>
+                </button>
+              )) : (
+                <span className="symbol-suggestion-status">暂无匹配标的</span>
+              )}
+            </div>
+          )}
         </form>
 
         <nav className="header-nav" aria-label="工作区导航">
@@ -1012,12 +1217,19 @@ export default function App() {
           <button className="nav-item" onClick={() => { setJournalOpen(true); notify('研究日志已打开，可按日期查看预测与revision') }}>复盘</button>
           <button className={`nav-item${backtestOpen ? ' is-active' : ''}`} onClick={() => setBacktestOpen(true)}>回测</button>
           <button className={`nav-item${alertOpen ? ' is-active' : ''}`} onClick={() => setAlertOpen(true)}>提醒{alertRules.filter((rule) => rule.enabled).length ? ` ${alertRules.filter((rule) => rule.enabled).length}` : ''}</button>
-          <button className={`nav-item${watchlistOpen ? ' is-active' : ''}`} onClick={() => setWatchlistOpen(true)}>自选 {watchlist.length}</button>
+          <button className={`nav-item${watchlistOpen ? ' is-active' : ''}`} onClick={() => setWatchlistOpen(true)}>自选（{watchlist.length}）</button>
           <button className={`nav-item${portfolioOpen ? ' is-active' : ''}`} onClick={() => setPortfolioOpen(true)}>模拟</button>
-          <button className="nav-item" onClick={() => notify(`${displayName} · ${marketMeta.source}${marketMeta.cached ? ' · 缓存命中' : ''}`)}>数据</button>
+          <button className="nav-item" title="查看当前行情数据来源" onClick={() => notify(`${displayName} · ${marketMeta.source}${marketMeta.cached ? ' · 缓存命中' : ''}`)}>行情源</button>
         </nav>
 
         <div className="header-actions">
+          <button
+            className="icon-button color-mode-toggle"
+            type="button"
+            aria-label={colorMode === 'light' ? '切换夜间模式' : '切换白天模式'}
+            title={colorMode === 'light' ? '夜间模式' : '白天模式'}
+            onClick={() => setColorMode((current) => current === 'light' ? 'dark' : 'light')}
+          >{colorMode === 'light' ? '☾' : '☀'}</button>
           <label className="font-scale-control">
             <span>字号</span>
             <select
@@ -1047,7 +1259,17 @@ export default function App() {
       <section className="quote-header">
         <div className="instrument">
           <div className="instrument-title">
-            <button className={`favorite${watchlist.some((item) => item.key === instrument.key) ? ' is-saved' : ''}`} type="button" aria-label="加入自选股" title="加入自选股" onClick={addCurrentToWatchlist}>★</button>
+            {(() => {
+              const saved = watchlist.some((item) => item.key === instrument.key)
+              return <button
+                className={`favorite${saved ? ' is-saved' : ''}`}
+                type="button"
+                aria-label={saved ? '移出自选股' : '加入自选股'}
+                title={saved ? '移出自选股' : '加入自选股'}
+                aria-pressed={saved}
+                onClick={toggleCurrentWatchlist}
+              >{saved ? '★' : '☆'}</button>
+            })()}
             <strong>{displayName}</strong>
             <span className="instrument-code">{instrument.symbol}</span>
             <span className="market-tag">{instrument.exchange}</span>
@@ -1074,6 +1296,14 @@ export default function App() {
           <button className={percentPrice ? 'is-active' : ''} onClick={() => { setLogPrice(false); setPercentPrice(true) }}>%</button>
         </div>
       </section>
+
+      {instrumentSwitchLabel && marketState === 'loading' && (
+        <div className="instrument-loading" role="status" aria-live="polite">
+          <span className="instrument-loading-spinner" />
+          <div><strong>正在切换标的</strong><small>{instrumentSwitchLabel} · 正在读取行情与筹码数据</small></div>
+          <i />
+        </div>
+      )}
 
       <section className="chart-toolbar">
         <div className="timeframes">
@@ -1209,7 +1439,10 @@ export default function App() {
         <section className="indicator-popover" aria-label="指标参数设置">
           <div className="indicator-popover-heading">
             <div><span>指标参数</span><strong>主图与副图</strong></div>
-            <button onClick={() => setIndicators(defaultIndicators)}>恢复默认</button>
+            <div className="indicator-popover-actions">
+              <button onClick={() => setIndicators(defaultIndicators)}>恢复默认</button>
+              <button className="indicator-popover-close" type="button" aria-label="关闭指标设置" title="关闭指标设置" onClick={() => setIndicatorOpen(false)}>×</button>
+            </div>
           </div>
           <label className="indicator-check">
             <input type="checkbox" checked={indicators.maEnabled} onChange={(event) => setIndicators((current) => ({ ...current, maEnabled: event.target.checked }))} />
@@ -1270,6 +1503,13 @@ export default function App() {
           <span className="rail-divider" />
           <button aria-label="撤销" data-tooltip="撤销" onClick={undoDrawing}><Icon name="undo" /></button>
           <button aria-label="重做" data-tooltip="重做" onClick={redoDrawing}><Icon name="redo" /></button>
+          <button
+            aria-label={`显示隐藏画线${hiddenDrawingCount ? `（${hiddenDrawingCount}）` : ''}`}
+            data-tooltip={hiddenDrawingCount ? `显示隐藏画线 · ${hiddenDrawingCount}` : '显示隐藏画线'}
+            className={hiddenDrawingCount ? 'has-hidden-drawings' : ''}
+            onClick={restoreHiddenDrawings}
+          ><Icon name="layers" />{hiddenDrawingCount > 0 && <span className="rail-count">{hiddenDrawingCount}</span>}</button>
+          <button className="clear-all-drawings" aria-label="清除全部画线" data-tooltip="清除全部 · 可撤销" onClick={clearAllDrawings}><Icon name="eraser" /></button>
         </aside>
 
         <section className="chart-region">
@@ -1315,6 +1555,7 @@ export default function App() {
               preserveViewOnDataChange={chartDataRevision.preserveView}
               onCommitDrawings={commitDrawings}
               fontScale={fontScale}
+              colorMode={colorMode}
               onHoverBar={handleHoverBar}
               onSelectBar={handleSelectBar}
               onSelectChipDate={handleSelectChipDate}

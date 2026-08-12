@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react'
+import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react'
 import type { BusinessDay, IChartApi, ISeriesApi, Time, UTCTimestamp } from 'lightweight-charts'
 import {
   createDrawingId,
@@ -7,9 +7,11 @@ import {
   drawingLayerClassName,
   drawingUsesTimeCoordinate,
   formatMeasurement,
+  movePointDrawing,
   replaceDrawingAnchor,
   toolToDrawingType,
   wheelAdjustedPrice,
+  wheelAdjustedFontSize,
   type Drawing,
   type DrawingAnchor,
 } from '../drawings/model'
@@ -208,6 +210,10 @@ export function DrawingLayer({
       return
     }
     if (gesture.kind === 'move' && gesture.origin && gesture.initial) {
+      if (gesture.initial.type === 'text') {
+        setGesture({ ...gesture, drawing: movePointDrawing(gesture.initial, anchor) })
+        return
+      }
       setGesture({
         ...gesture,
         drawing: translateDrawing(
@@ -245,6 +251,18 @@ export function DrawingLayer({
     onCommit(drawings.map((drawing) => drawing.id === selected.id ? { ...drawing, ...patch } : drawing))
   }
 
+  const scaleText = (event: ReactWheelEvent<SVGSVGElement>) => {
+    const target = event.target as SVGElement
+    const objectId = target.closest<SVGElement>('[data-drawing-id]')?.dataset.drawingId
+    const drawing = drawings.find((item) => item.id === objectId)
+    if (!drawing || drawing.type !== 'text' || drawing.locked || drawing.id !== selectedId) return
+    event.preventDefault()
+    event.stopPropagation()
+    onCommit(drawings.map((item) => item.id === drawing.id
+      ? { ...item, style: { ...item.style, fontSize: wheelAdjustedFontSize(item.style.fontSize, event.deltaY) } }
+      : item))
+  }
+
   const rendered = gesture
     ? [...visibleDrawings.filter((drawing) => drawing.id !== gesture.drawing.id), gesture.drawing]
     : visibleDrawings
@@ -262,6 +280,7 @@ export function DrawingLayer({
         onPointerMove={move}
         onPointerUp={finish}
         onPointerCancel={() => setGesture(null)}
+        onWheel={scaleText}
       >
         {rendered.map((drawing) => {
           const anchors = drawing.anchors.map((anchor) => pointForDrawing(drawing, anchor))
@@ -283,7 +302,7 @@ export function DrawingLayer({
             </g>
           }
           if (drawing.type === 'text') {
-            return <text key={drawing.id} data-drawing-id={drawing.id} className={className} x={first.x} y={first.y} fill={drawing.style.color} opacity={drawing.style.opacity}>{drawing.text}</text>
+            return <text key={drawing.id} data-drawing-id={drawing.id} className={className} x={first.x} y={first.y} fill={drawing.style.color} opacity={drawing.style.opacity} fontSize={drawing.style.fontSize ?? 16}>{drawing.text}</text>
           }
           if (drawing.type === 'freehand' || drawing.type === 'highlighter') {
             const points = drawing.path?.flatMap((anchor) => {
@@ -374,6 +393,23 @@ export function DrawingLayer({
             }}
           /></label>
           {selected.type === 'text' && <label>文字<input value={selected.text ?? ''} onChange={(event) => patchSelected({ text: event.target.value })} /></label>}
+          {selected.type === 'text' && <label>字号<input
+            aria-label="文本字号"
+            type="number"
+            min="10"
+            max="72"
+            title="在批注文字或此处滚动滚轮可缩放"
+            value={selected.style.fontSize ?? 16}
+            onWheel={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              patchSelected({ style: { ...selected.style, fontSize: wheelAdjustedFontSize(selected.style.fontSize, event.deltaY) } })
+            }}
+            onChange={(event) => {
+              const fontSize = Math.max(10, Math.min(72, Number(event.target.value) || 16))
+              patchSelected({ style: { ...selected.style, fontSize } })
+            }}
+          /></label>}
           <label>颜色<input aria-label="画线颜色" type="color" value={selected.style.color} onChange={(event) => patchSelected({ style: { ...selected.style, color: event.target.value } })} /></label>
           <label>周期<select value={selected.timeframeVisibility === 'all' ? 'all' : 'current'} onChange={(event) => patchSelected({ timeframeVisibility: event.target.value === 'all' ? 'all' : [timeframe] })}><option value="all">全部周期</option><option value="current">仅{timeframe}</option></select></label>
           {selected.locked ? (
@@ -382,7 +418,7 @@ export function DrawingLayer({
             <button className="is-primary" title="完成并锁定当前画线" onClick={() => {
               patchSelected({ locked: true })
               setSelectedId(null)
-            }}>完成画线</button>
+            }}>{selected.type === 'text' ? '完成批注' : '完成画线'}</button>
           )}
           <button onClick={() => {
             const duplicate = translateDrawing({ ...selected, id: createDrawingId(), locked: false }, 86_400_000, selected.anchors[0].price * 0.01)

@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse
 from .config import settings
 from .backtest import BacktestRequest, BacktestResult, run_backtest
 from .market_data import MarketDataService
-from .market_data.models import Adjustment, BarsResponse, InstrumentPayload, QuoteResponse, Timeframe
+from .market_data.models import Adjustment, BarsResponse, InstrumentPayload, InstrumentSearchResult, QuoteResponse, Timeframe
 from .market_data.symbols import SymbolError
 from .market_data.base import ProviderError
 from .schemas import DemoInstrument, DemoSnapshotResponse, HealthResponse
@@ -70,6 +70,14 @@ async def resolve_instrument(input: str = Query(min_length=1, max_length=24)) ->
         return market_data.resolve(input)
     except SymbolError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@app.get("/api/instruments/search", response_model=list[InstrumentSearchResult], tags=["market-data"])
+async def search_instruments(
+    q: str = Query(min_length=1, max_length=40),
+    limit: int = Query(default=5, ge=1, le=10),
+) -> list[InstrumentSearchResult]:
+    return await market_data.search_instruments(q, limit)
 
 
 @app.get("/api/market/bars/{symbol}", response_model=BarsResponse, tags=["market-data"])

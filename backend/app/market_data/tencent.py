@@ -1,10 +1,12 @@
 from datetime import UTC, datetime
+import json
+import re
 from typing import Any
 
 import httpx
 
-from .models import Adjustment, BarPayload, QuoteResponse, Timeframe
-from .symbols import Instrument
+from .models import Adjustment, BarPayload, InstrumentSearchResult, QuoteResponse, Timeframe
+from .symbols import Instrument, SymbolError, normalize_symbol
 from .aggregate import aggregate_minute_bars
 from .base import ProviderError
 
@@ -14,6 +16,7 @@ class TencentProvider:
     daily_url = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
     minute_url = "https://ifzq.gtimg.cn/appstock/app/kline/mkline"
     latest_minute_url = "https://web.ifzq.gtimg.cn/appstock/app/minute/query"
+    search_url = "https://smartbox.gtimg.cn/s3/"
 
     def __init__(self, timeout_seconds: float = 12.0):
         self.timeout = httpx.Timeout(timeout_seconds)
@@ -26,6 +29,78 @@ class TencentProvider:
         if payload.get("code") != 0:
             raise ProviderError(payload.get("msg") or "Market-data provider returned an error")
         return payload
+
+    async def _get_text(self, url: str, params: dict[str, str]) -> str:
+        async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
+            response = await client.get(url, params=params, headers={"User-Agent": "stock-analysis-dashboard/1.0"})
+            response.raise_for_status()
+            return response.text
+
+    @staticmethod
+    def _parse_search_payload(payload: str, query: str, limit: int) -> list[InstrumentSearchResult]:
+        match = re.search(r"v_hint\s*=\s*(\"(?:\\.|[^\"])*\")", payload)
+        if not match:
+            return []
+        try:
+            decoded = json.loads(match.group(1))
+        except json.JSONDecodeError:
+            return []
+
+        supported: list[tuple[int, InstrumentSearchResult, str]] = []
+        seen: set[str] = set()
+        normalized_query = query.strip().lower()
+        for provider_index, raw_item in enumerate(str(decoded).split("^")):
+            parts = raw_item.split("~")
+            if len(parts) < 5:
+                continue
+            prefix, code, name, pinyin, category = parts[:5]
+            if prefix not in {"sh", "sz", "bj", "hk"}:
+                continue
+            if prefix == "hk":
+                if category != "GP":
+                    continue
+            elif category not in {"GP-A", "ETF"}:
+                continue
+            try:
+                instrument = normalize_symbol(f"{prefix}{code}")
+            except SymbolError:
+                continue
+            if instrument.key in seen:
+                continue
+            seen.add(instrument.key)
+            name_text = str(name).strip()
+            code_starts = code.startswith(normalized_query)
+            if normalized_query.isdigit():
+                rank = 0 if code_starts else 10
+            else:
+                lower_name = name_text.lower()
+                rank = (
+                    0 if lower_name == normalized_query
+                    else 1 if lower_name.startswith(normalized_query)
+                    else 2 if normalized_query in lower_name
+                    else 3 if str(pinyin).lower().startswith(normalized_query)
+                    else 10
+                )
+            supported.append((rank * 1000 + provider_index, InstrumentSearchResult(
+                input=instrument.provider_symbol,
+                symbol=instrument.symbol,
+                name=name_text,
+                market=instrument.market,
+                exchange=instrument.exchange,
+                provider_symbol=instrument.provider_symbol,
+                asset_type="etf" if category == "ETF" else "stock",
+            ), code))
+
+        if normalized_query.isdigit() and any(code.startswith(normalized_query) for _, _, code in supported):
+            supported = [item for item in supported if item[2].startswith(normalized_query)]
+        return [item[1] for item in sorted(supported, key=lambda item: item[0])[:max(1, min(limit, 10))]]
+
+    async def search_instruments(self, query: str, limit: int = 5) -> list[InstrumentSearchResult]:
+        value = query.strip()
+        if not value:
+            return []
+        payload = await self._get_text(self.search_url, {"q": value, "t": "all"})
+        return self._parse_search_payload(payload, value, limit)
 
     @staticmethod
     def _volume_multiplier(instrument: Instrument) -> int:

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { commitDrawingGesture, defaultDrawingStyle, drawingLayerClassName, drawingUsesTimeCoordinate, formatMeasurement, replaceDrawingAnchor, toolToDrawingType, wheelAdjustedPrice, type Drawing } from './model'
+import { commitDrawingGesture, defaultDrawingStyle, drawingLayerClassName, drawingUsesTimeCoordinate, formatMeasurement, movePointDrawing, replaceDrawingAnchor, toolToDrawingType, wheelAdjustedFontSize, wheelAdjustedPrice, type Drawing } from './model'
 
 describe('drawing model', () => {
   it('maps every implemented toolbar tool to a stable drawing type', () => {
@@ -49,6 +49,24 @@ describe('drawing model', () => {
     expect(wheelAdjustedPrice(59.85, -100)).toBe(59.86)
     expect(wheelAdjustedPrice(59.85, 100)).toBe(59.84)
     expect(wheelAdjustedPrice(59.85, -100, 10)).toBe(59.95)
+  })
+
+  it('scales text within readable limits using the wheel', () => {
+    expect(wheelAdjustedFontSize(undefined, -100)).toBe(17)
+    expect(wheelAdjustedFontSize(24, 100)).toBe(23)
+    expect(wheelAdjustedFontSize(72, -100)).toBe(72)
+    expect(wheelAdjustedFontSize(10, 100)).toBe(10)
+  })
+
+  it('moves a one-anchor text directly onto a valid chart coordinate', () => {
+    const drawing: Drawing = {
+      id: 'text-1', symbol: 'SZSE:001280', market: 'CN', type: 'text',
+      anchors: [{ timestampMs: 1, price: 10 }], text: '判断',
+      timeframeVisibility: 'all', locked: false, hidden: false,
+      style: defaultDrawingStyle('text'),
+    }
+    const moved = movePointDrawing(drawing, { timestampMs: 3, price: 12 })
+    expect(moved.anchors).toEqual([{ timestampMs: 3, price: 12 }])
   })
 
   it('commits endpoint edits in place instead of duplicating a drawing', () => {

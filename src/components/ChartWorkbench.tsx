@@ -25,6 +25,9 @@ import { ChipCostPanel } from './ChipCostPanel'
 import { calculateChipCostEstimate } from '../chips/calculate'
 import { distributionVisibility, type DistributionMode } from '../distributions/model'
 import { extendedChipPanelHeight } from '../chips/panelPosition'
+import { resolveChipOverlayGeometry } from '../chips/geometry'
+import { barsInVisibleTimeRange } from '../profile/visibleRange'
+import { preservePriceModeViewport } from '../chart/priceModeViewport'
 
 export type { DistributionMode } from '../distributions/model'
 export type ProfileLayout = 'overlay' | 'dock'
@@ -66,6 +69,7 @@ type Props = {
   preserveViewOnDataChange: boolean
   onCommitDrawings: (next: Drawing[]) => void
   fontScale: 'standard' | 'large' | 'xlarge'
+  colorMode: 'light' | 'dark'
   onHoverBar: (bar: StockBar | null) => void
   onSelectBar: (bar: StockBar) => void
   onSelectChipDate: (bar: StockBar) => void
@@ -79,6 +83,8 @@ type OverlayGeometry = {
   profileSource: 'visible' | 'anchored'
   chips: { y: number; price: number; weight: number; profitable: boolean }[]
   chipStats: { currentY: number | null; averageY: number | null }
+  chipScaleMode: 'chart' | 'cost'
+  chipScaleRange: [number, number] | null
   mainPaneHeight: number
   chartHeight: number
   width: number
@@ -170,6 +176,7 @@ export function ChartWorkbench({
   preserveViewOnDataChange,
   onCommitDrawings,
   fontScale,
+  colorMode,
   onHoverBar,
   onSelectBar,
   onSelectChipDate,
@@ -191,17 +198,22 @@ export function ChartWorkbench({
   const onSelectBarRef = useRef(onSelectBar)
   const onSelectChipDateRef = useRef(onSelectChipDate)
   const activeToolRef = useRef(activeTool)
+  const logPriceRef = useRef(logPrice)
   onHoverBarRef.current = onHoverBar
   onSelectBarRef.current = onSelectBar
   onSelectChipDateRef.current = onSelectChipDate
   activeToolRef.current = activeTool
+  logPriceRef.current = logPrice
   const [intradayPrompt, setIntradayPrompt] = useState<IntradayPrompt | null>(null)
+  const [selectedProfilePrice, setSelectedProfilePrice] = useState<number | null>(null)
   const [geometry, setGeometry] = useState<OverlayGeometry>({
     profile: [],
     profileStats: { poc: 0, vah: 0, val: 0, pocY: null, vahY: null, valY: null },
     profileSource: 'visible',
     chips: [],
     chipStats: { currentY: null, averageY: null },
+    chipScaleMode: 'chart',
+    chipScaleRange: null,
     mainPaneHeight: 420,
     chartHeight: 0,
     width: 0,
@@ -260,12 +272,16 @@ export function ChartWorkbench({
       width: host.clientWidth,
       height: host.clientHeight,
       layout: {
-        background: { type: ColorType.Solid, color: '#ffffff' },
-        textColor: '#535967',
+        background: { type: ColorType.Solid, color: colorMode === 'dark' ? '#121722' : '#ffffff' },
+        textColor: colorMode === 'dark' ? '#aeb8c8' : '#535967',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif',
         fontSize: chartFontSize,
         attributionLogo: false,
-        panes: { separatorColor: '#e5e8ee', separatorHoverColor: '#c7cedb', enableResize: true },
+        panes: {
+          separatorColor: colorMode === 'dark' ? '#2a3342' : '#e5e8ee',
+          separatorHoverColor: colorMode === 'dark' ? '#48566b' : '#c7cedb',
+          enableResize: true,
+        },
       },
       localization: {
         locale: 'zh-CN',
@@ -273,18 +289,18 @@ export function ChartWorkbench({
         timeFormatter: formatTime,
       },
       grid: {
-        vertLines: { color: '#eef0f4', style: LineStyle.Solid },
-        horzLines: { color: '#eef0f4', style: LineStyle.Solid },
+        vertLines: { color: colorMode === 'dark' ? '#232b38' : '#eef0f4', style: LineStyle.Solid },
+        horzLines: { color: colorMode === 'dark' ? '#232b38' : '#eef0f4', style: LineStyle.Solid },
       },
       rightPriceScale: {
         visible: true,
-        borderColor: '#dde1e8',
+        borderColor: colorMode === 'dark' ? '#334052' : '#dde1e8',
         scaleMargins: { top: 0.09, bottom: 0.08 },
         minimumWidth: priceScaleWidth,
       },
       leftPriceScale: { visible: false },
       timeScale: {
-        borderColor: '#dde1e8',
+        borderColor: colorMode === 'dark' ? '#334052' : '#dde1e8',
         timeVisible: isMinute,
         secondsVisible: false,
         rightOffset: isMinute ? 3 : 6,
@@ -413,6 +429,7 @@ export function ChartWorkbench({
     const updateGeometry = () => {
       const currentChipEstimate = chipEstimateRef.current
       const visibleRange = chart.timeScale().getVisibleLogicalRange()
+      const visibleTimeRange = chart.timeScale().getVisibleRange()
       if (visibleRange) {
         host.dataset.visibleLogicalFrom = visibleRange.from.toFixed(4)
         host.dataset.visibleLogicalTo = visibleRange.to.toFixed(4)
@@ -420,9 +437,7 @@ export function ChartWorkbench({
         delete host.dataset.visibleLogicalFrom
         delete host.dataset.visibleLogicalTo
       }
-      const visibleBars = visibleRange
-        ? bars.slice(Math.max(0, Math.floor(visibleRange.from)), Math.min(bars.length, Math.ceil(visibleRange.to) + 1))
-        : bars
+      const visibleBars = barsInVisibleTimeRange(bars, visibleTimeRange)
       const anchoredBars = anchoredRange
         ? bars.filter((bar) => {
           const timestamp = bar.date.includes(' ')
@@ -431,10 +446,13 @@ export function ChartWorkbench({
           return timestamp >= anchoredRange[0] && timestamp <= anchoredRange[1]
         })
         : []
-      const profileResult = calculateVolumeProfile(anchoredBars.length ? anchoredBars : visibleBars.length ? visibleBars : bars, 48, 0.7, logPrice)
+      const profileBars = anchoredBars.length ? anchoredBars : visibleTimeRange ? visibleBars : bars
+      host.dataset.profileBarCount = String(profileBars.length)
+      const profileResult = calculateVolumeProfile(profileBars, 48, 0.7, logPriceRef.current)
+      const mainPaneHeight = chart.panes()[0]?.getHeight() ?? host.clientHeight * 0.64
       const profile = profileResult.rows.flatMap((row) => {
         const y = candleSeries.priceToCoordinate(row.price)
-        return y == null ? [] : [{
+        return y == null || y < 0 || y > mainPaneHeight ? [] : [{
           y,
           width: row.total,
           sell: row.sell,
@@ -444,27 +462,34 @@ export function ChartWorkbench({
           price: row.price,
         }]
       })
-      const chips = currentChipEstimate.rows.flatMap((row) => {
-        const y = candleSeries.priceToCoordinate(row.price)
-        return y == null ? [] : [{ y, price: row.price, weight: row.weight, profitable: row.profitable }]
-      })
+      const visibleProfileCoordinate = (price: number) => {
+        const coordinate = candleSeries.priceToCoordinate(price)
+        return coordinate != null && coordinate >= 0 && coordinate <= mainPaneHeight ? coordinate : null
+      }
+      const chipGeometry = resolveChipOverlayGeometry(
+        currentChipEstimate,
+        (price) => candleSeries.priceToCoordinate(price),
+        mainPaneHeight,
+      )
       setGeometry((current) => ({
         profile,
         profileStats: {
           poc: profileResult.poc,
           vah: profileResult.vah,
           val: profileResult.val,
-          pocY: candleSeries.priceToCoordinate(profileResult.poc),
-          vahY: candleSeries.priceToCoordinate(profileResult.vah),
-          valY: candleSeries.priceToCoordinate(profileResult.val),
+          pocY: visibleProfileCoordinate(profileResult.poc),
+          vahY: visibleProfileCoordinate(profileResult.vah),
+          valY: visibleProfileCoordinate(profileResult.val),
         },
         profileSource: anchoredBars.length ? 'anchored' : 'visible',
-        chips,
+        chips: chipGeometry.rows,
         chipStats: {
-          currentY: candleSeries.priceToCoordinate(currentChipEstimate.currentPrice),
-          averageY: candleSeries.priceToCoordinate(currentChipEstimate.averageCost),
+          currentY: chipGeometry.currentY,
+          averageY: chipGeometry.averageY,
         },
-        mainPaneHeight: chart.panes()[0]?.getHeight() ?? host.clientHeight * 0.64,
+        chipScaleMode: chipGeometry.scaleMode,
+        chipScaleRange: chipGeometry.scaleRange,
+        mainPaneHeight,
         chartHeight: host.clientHeight,
         width: host.clientWidth,
         revision: current.revision + 1,
@@ -532,7 +557,7 @@ export function ChartWorkbench({
       chartRef.current = null
       candleRef.current = null
     }
-  }, [anchoredRange, bars, byTime, candleTheme, cleanMode, dataRevision, fontScale, indicators, isMinute, latestBar, logPrice, macd, market, preserveViewOnDataChange, symbol, timeframe])
+  }, [anchoredRange, bars, byTime, candleTheme, cleanMode, colorMode, dataRevision, fontScale, indicators, isMinute, latestBar, macd, market, preserveViewOnDataChange, symbol, timeframe])
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => refreshGeometryRef.current())
@@ -550,12 +575,21 @@ export function ChartWorkbench({
     const series = candleRef.current
     const chart = chartRef.current
     if (!series || !chart) return
-    series.priceScale().applyOptions({ mode: percentPrice ? PriceScaleMode.Percentage : logPrice ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal })
-    requestAnimationFrame(() => {
-      chart.timeScale().scrollToPosition(isMinute ? 3 : 6, false)
-      window.dispatchEvent(new Event('resize'))
+    // The candle series includes future whitespace so investors can draw and
+    // project forward. scrollToPosition() anchors to that future tail, which
+    // used to move every candle off-screen after a price-mode switch. Capture
+    // and restore the exact investor-controlled viewport instead.
+    const viewport = preservePriceModeViewport(chart.timeScale().getVisibleLogicalRange())
+    series.priceScale().applyOptions({
+      autoScale: true,
+      mode: percentPrice ? PriceScaleMode.Percentage : logPrice ? PriceScaleMode.Logarithmic : PriceScaleMode.Normal,
     })
-  }, [isMinute, logPrice, percentPrice])
+    const frame = requestAnimationFrame(() => {
+      if (viewport) chart.timeScale().setVisibleLogicalRange(viewport)
+      refreshGeometryRef.current()
+    })
+    return () => cancelAnimationFrame(frame)
+  }, [logPrice, percentPrice])
 
   useEffect(() => {
     setIntradayPrompt(null)
@@ -592,6 +626,10 @@ export function ChartWorkbench({
     if (overflow > 0) source.forEach((item) => { item.y -= overflow })
     return source
   }, [geometry.mainPaneHeight, geometry.profileStats])
+  const selectedProfile = selectedProfilePrice == null
+    ? null
+    : geometry.profile.find((row) => Math.abs(row.price - selectedProfilePrice) < 1e-8) ?? null
+  const profileTotal = geometry.profile.reduce((sum, row) => sum + row.width, 0)
 
   return (
     <div className="chart-stage" aria-label={`${instrumentLabel}${timeframe}图表`}>
@@ -661,6 +699,8 @@ export function ChartWorkbench({
           priceScaleOffset={priceScaleWidth}
           currentY={geometry.chipStats.currentY}
           averageY={geometry.chipStats.averageY}
+          scaleMode={geometry.chipScaleMode}
+          scaleRange={geometry.chipScaleRange}
           isLatest={chipAsOfDate === chipLatestDate}
           onResetToLatest={onResetChipDate}
         />
@@ -689,16 +729,27 @@ export function ChartWorkbench({
           {geometry.profile.map((row, index) => {
             const maxWidth = Math.max(...geometry.profile.map((item) => item.width), 1)
             return (
-              <div
+              <button
+                type="button"
                 key={`${row.y}-${index}`}
                 className={`profile-row${row.emphasis ? ' is-poc' : ''}${row.inValueArea ? ' is-value-area' : ''}`}
                 style={{ top: row.y, width: `${Math.max(3, row.width / maxWidth * 100)}%` }}
+                aria-label={`${row.price.toFixed(2)}元，成交量${formatVolume(row.width)}，占可视分布${profileTotal ? (row.width / profileTotal * 100).toFixed(2) : '0.00'}%`}
+                title={`${row.price.toFixed(2)} · ${formatVolume(row.width)}`}
+                onClick={() => setSelectedProfilePrice((current) => current === row.price ? null : row.price)}
               >
                 <span className="profile-sell" style={{ flex: row.sell }} />
                 <span className="profile-buy" style={{ flex: row.buy }} />
-              </div>
+              </button>
             )
           })}
+          {selectedProfile && (
+            <div className="profile-row-detail" role="status" style={{ top: Math.max(56, Math.min(geometry.mainPaneHeight - 44, selectedProfile.y)) }}>
+              <strong>{selectedProfile.price.toFixed(2)}</strong>
+              <span>{formatVolume(selectedProfile.width)}</span>
+              <em>{profileTotal ? (selectedProfile.width / profileTotal * 100).toFixed(2) : '0.00'}%</em>
+            </div>
+          )}
           <div className="profile-legend">
             <span><i className="legend-sell" />主动卖</span>
             <span><i className="legend-buy" />主动买</span>

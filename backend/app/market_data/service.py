@@ -1,6 +1,7 @@
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+import time
 from zoneinfo import ZoneInfo
 
 import httpx
@@ -8,7 +9,7 @@ import httpx
 from .aggregate import aggregate_bars
 from .base import MarketProvider, ProviderError
 from .cache import JsonCache
-from .models import Adjustment, BarPayload, BarsResponse, InstrumentPayload, QuoteResponse, Timeframe
+from .models import Adjustment, BarPayload, BarsResponse, InstrumentPayload, InstrumentSearchResult, QuoteResponse, Timeframe
 from .symbols import Instrument, normalize_symbol
 from .tencent import TencentProvider
 from .yahoo import YahooProvider
@@ -28,6 +29,7 @@ class MarketDataService:
             item.name: {"name": item.name, "healthy": True, "failures": 0, "last_error": None, "last_success_at": None}
             for item in self.providers
         }
+        self._search_cache: dict[str, tuple[float, list[InstrumentSearchResult]]] = {}
 
     @staticmethod
     def resolve(raw: str, name: str | None = None) -> InstrumentPayload:
@@ -98,6 +100,31 @@ class MarketDataService:
 
     def provider_status(self) -> list[dict[str, Any]]:
         return [dict(self._provider_health[item.name], priority=index + 1) for index, item in enumerate(self.providers)]
+
+    async def search_instruments(self, query: str, limit: int = 5) -> list[InstrumentSearchResult]:
+        value = query.strip()
+        if not value:
+            return []
+        normalized_limit = max(1, min(limit, 10))
+        cache_key = value.casefold()
+        cached = self._search_cache.get(cache_key)
+        if cached and time.monotonic() - cached[0] < 600:
+            return cached[1][:normalized_limit]
+        for provider in self.providers:
+            search = getattr(provider, "search_instruments", None)
+            if not callable(search):
+                continue
+            try:
+                results = await search(value, 10)
+                if results:
+                    self._search_cache[cache_key] = (time.monotonic(), results)
+                    if len(self._search_cache) > 200:
+                        oldest = min(self._search_cache, key=lambda key: self._search_cache[key][0])
+                        self._search_cache.pop(oldest, None)
+                    return results[:normalized_limit]
+            except (ProviderError, httpx.HTTPError, ValueError, KeyError, TypeError) as error:
+                self._record_provider_result(provider.name, error)
+        return []
 
     async def _fetch_bars(
         self,
