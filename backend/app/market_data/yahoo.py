@@ -20,8 +20,18 @@ class YahooProvider:
     name = "yahoo-chart"
     chart_url = "https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
 
-    def __init__(self, timeout_seconds: float = 12.0):
-        self.timeout = httpx.Timeout(timeout_seconds)
+    def __init__(self, timeout_seconds: float = 7.0, client: httpx.AsyncClient | None = None):
+        self._owns_client = client is None
+        self.client = client or httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout_seconds, connect=min(2.5, timeout_seconds)),
+            limits=httpx.Limits(max_connections=20, max_keepalive_connections=8, keepalive_expiry=30),
+            trust_env=False,
+            headers={"User-Agent": "Mozilla/5.0 stock-analysis-dashboard/1.0"},
+        )
+
+    async def close(self) -> None:
+        if self._owns_client:
+            await self.client.aclose()
 
     @staticmethod
     def _symbol(instrument: Instrument) -> str:
@@ -36,14 +46,12 @@ class YahooProvider:
 
     async def _get(self, instrument: Instrument, interval: str, range_: str) -> dict[str, Any]:
         url = self.chart_url.format(symbol=self._symbol(instrument))
-        async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
-            response = await client.get(
-                url,
-                params={"interval": interval, "range": range_, "events": "div,splits"},
-                headers={"User-Agent": "Mozilla/5.0 stock-analysis-dashboard/1.0"},
-            )
-            response.raise_for_status()
-            payload = response.json()
+        response = await self.client.get(
+            url,
+            params={"interval": interval, "range": range_, "events": "div,splits"},
+        )
+        response.raise_for_status()
+        payload = response.json()
         chart = payload.get("chart", {})
         if chart.get("error"):
             raise ProviderError(str(chart["error"]))

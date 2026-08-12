@@ -318,14 +318,15 @@ export function getMarketBars(
   const cached = options.refresh ? null : readMarketCache(marketBarsMemoryCache, cacheKey, ttlMs)
   if (cached) return Promise.resolve({ ...cached, cached: true })
   return requestJson<MarketBarsResponse>(path, signal)
-    .then((response) => writeMarketCache(marketBarsMemoryCache, cacheKey, response))
+    .then((response) => response.stale ? response : writeMarketCache(marketBarsMemoryCache, cacheKey, response))
 }
 
-export function getMarketQuote(symbol: string, signal?: AbortSignal) {
+export function getMarketQuote(symbol: string, signal?: AbortSignal, refresh = false) {
   const path = `/api/market/quote/${encodeURIComponent(symbol)}`
-  const cached = readMarketCache(marketQuoteMemoryCache, path, 30_000)
+  const cached = refresh ? null : readMarketCache(marketQuoteMemoryCache, path, 30_000)
   if (cached) return Promise.resolve(cached)
-  return requestJson<MarketQuoteResponse>(path, signal)
+  const requestPath = refresh ? `${path}?refresh=true` : path
+  return requestJson<MarketQuoteResponse>(requestPath, signal)
     .then((response) => writeMarketCache(marketQuoteMemoryCache, path, response))
 }
 

@@ -1,4 +1,6 @@
 from datetime import UTC, datetime
+import asyncio
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 import time
@@ -30,6 +32,72 @@ class MarketDataService:
             for item in self.providers
         }
         self._search_cache: dict[str, tuple[float, list[InstrumentSearchResult]]] = {}
+        self._bar_flights: dict[str, tuple[int, asyncio.Task[BarsResponse]]] = {}
+        self._quote_flights: dict[str, asyncio.Task[QuoteResponse]] = {}
+        self._quote_cache: dict[str, tuple[float, QuoteResponse]] = {}
+        self._refresh_tasks: set[asyncio.Task[Any]] = set()
+
+    async def close(self) -> None:
+        refresh_tasks = list(self._refresh_tasks)
+        for task in refresh_tasks:
+            task.cancel()
+        if refresh_tasks:
+            await asyncio.gather(*refresh_tasks, return_exceptions=True)
+        foreground_tasks = [task for _, task in self._bar_flights.values() if task not in refresh_tasks]
+        foreground_tasks.extend(self._quote_flights.values())
+        for task in foreground_tasks:
+            task.cancel()
+        if foreground_tasks:
+            await asyncio.gather(*foreground_tasks, return_exceptions=True)
+        for provider in self.providers:
+            close = getattr(provider, "close", None)
+            if callable(close):
+                await close()
+
+    @staticmethod
+    def _response_copy(response: BarsResponse) -> BarsResponse:
+        return response.model_copy(deep=True)
+
+    async def _run_bar_flight(self, key: str, limit: int, factory) -> BarsResponse:
+        flight = self._bar_flights.get(key)
+        if flight is None or flight[0] < limit:
+            existing = asyncio.create_task(factory())
+            self._bar_flights[key] = (limit, existing)
+        else:
+            existing = flight[1]
+        try:
+            return self._response_copy(await asyncio.shield(existing))
+        finally:
+            current = self._bar_flights.get(key)
+            if existing.done() and current is not None and current[1] is existing:
+                self._bar_flights.pop(key, None)
+
+    def _schedule_background_refresh(
+        self, instrument: Instrument, timeframe: Timeframe, adjustment: Adjustment, limit: int, cache_key: str
+    ) -> None:
+        if cache_key in self._bar_flights:
+            return
+
+        async def refresh() -> BarsResponse:
+            try:
+                return await self._get_bars_online(instrument, timeframe, adjustment, limit, cache_key)
+            except (ProviderError, httpx.HTTPError, ValueError, KeyError, TypeError):
+                stale = self.cache.get_any(cache_key)
+                if stale is None:
+                    raise
+                return BarsResponse.model_validate(stale)
+
+        task = asyncio.create_task(refresh())
+        self._bar_flights[cache_key] = (limit, task)
+        self._refresh_tasks.add(task)
+
+        def finished(done: asyncio.Task[Any]) -> None:
+            self._refresh_tasks.discard(done)
+            current = self._bar_flights.get(cache_key)
+            if current is not None and current[1] is done:
+                self._bar_flights.pop(cache_key, None)
+
+        task.add_done_callback(finished)
 
     @staticmethod
     def resolve(raw: str, name: str | None = None) -> InstrumentPayload:
@@ -160,6 +228,46 @@ class MarketDataService:
                 errors.append(f"{provider.name}: {error}")
         raise ProviderError("; ".join(errors) or "All market-data providers failed")
 
+    async def _get_bars_online(
+        self,
+        instrument: Instrument,
+        timeframe: Timeframe,
+        adjustment: Adjustment,
+        normalized_limit: int,
+        cache_key: str,
+    ) -> BarsResponse:
+        stale_value = self.cache.get_any(cache_key)
+        cache_limit = normalized_limit
+        bars, name, source, fallback_used, provider_chain, quality_issues, applied_adjustment = await self._fetch_bars(
+            instrument, timeframe, adjustment, normalized_limit
+        )
+        if stale_value:
+            stale_response = BarsResponse.model_validate(stale_value)
+            cache_limit = max(cache_limit, stale_response.requested_limit)
+            merged = {bar.time: bar for bar in stale_response.bars}
+            merged.update({bar.time: bar for bar in bars})
+            bars = [merged[key] for key in sorted(merged)][-2000:]
+            quality_issues = list(dict.fromkeys([*quality_issues, *self._quality_issues(bars)]))
+        response = BarsResponse(
+            instrument=self.resolve(instrument.provider_symbol, name),
+            timeframe=timeframe,
+            adjustment=adjustment,
+            adjustment_applied=applied_adjustment,
+            source=source,
+            fetched_at=datetime.now(UTC),
+            cached=False,
+            delayed=True,
+            requested_limit=cache_limit,
+            provider_chain=provider_chain,
+            fallback_used=fallback_used,
+            stale=False,
+            freshness_seconds=self._bar_freshness_seconds(bars, datetime.now(UTC)),
+            quality_issues=list(dict.fromkeys(quality_issues)),
+            bars=bars,
+        )
+        self.cache.set(cache_key, response.model_dump(mode="json"))
+        return response
+
     async def get_bars(
         self,
         raw_symbol: str,
@@ -179,52 +287,36 @@ class MarketDataService:
             response.freshness_seconds = self._bar_freshness_seconds(response.bars, response.fetched_at)
         else:
             stale_value = self.cache.get_any(cache_key)
-            try:
-                bars, name, source, fallback_used, provider_chain, quality_issues, applied_adjustment = await self._fetch_bars(
-                    instrument, timeframe, adjustment, normalized_limit
-                )
-            except ProviderError:
-                if stale_value is None:
-                    raise
+            if stale_value is not None and not refresh and stale_value.get("requested_limit", 0) >= normalized_limit:
                 response = BarsResponse.model_validate(stale_value)
                 response.cached = True
                 response.stale = True
-                response.fallback_used = True
                 response.freshness_seconds = self._bar_freshness_seconds(response.bars, response.fetched_at)
-                response.provider_chain = [item.name for item in self.providers]
                 response.quality_issues = list(dict.fromkeys([
                     *response.quality_issues,
-                    "全部在线行情源暂不可用，当前使用过期本地缓存",
+                    "已即时显示本地缓存，后台正在更新行情",
                 ]))
-                response.bars = response.bars[-normalized_limit:]
-                response.requested_limit = normalized_limit
-                if trading_date:
-                    response.bars = [bar for bar in response.bars if bar.time.startswith(trading_date)]
-                return response
-            if stale_value:
-                stale_response = BarsResponse.model_validate(stale_value)
-                merged = {bar.time: bar for bar in stale_response.bars}
-                merged.update({bar.time: bar for bar in bars})
-                bars = [merged[key] for key in sorted(merged)][-2000:]
-                quality_issues = list(dict.fromkeys([*quality_issues, *self._quality_issues(bars)]))
-            response = BarsResponse(
-                instrument=self.resolve(raw_symbol, name),
-                timeframe=timeframe,
-                adjustment=adjustment,
-                adjustment_applied=applied_adjustment,
-                source=source,
-                fetched_at=datetime.now(UTC),
-                cached=False,
-                delayed=True,
-                requested_limit=normalized_limit,
-                provider_chain=provider_chain,
-                fallback_used=fallback_used,
-                stale=False,
-                freshness_seconds=self._bar_freshness_seconds(bars, datetime.now(UTC)),
-                quality_issues=list(dict.fromkeys(quality_issues)),
-                bars=bars,
-            )
-            self.cache.set(cache_key, response.model_dump(mode="json"))
+                self._schedule_background_refresh(instrument, timeframe, adjustment, normalized_limit, cache_key)
+            else:
+                async def online() -> BarsResponse:
+                    try:
+                        return await self._get_bars_online(instrument, timeframe, adjustment, normalized_limit, cache_key)
+                    except ProviderError:
+                        if stale_value is None:
+                            raise
+                        fallback = BarsResponse.model_validate(stale_value)
+                        fallback.cached = True
+                        fallback.stale = True
+                        fallback.fallback_used = True
+                        fallback.freshness_seconds = self._bar_freshness_seconds(fallback.bars, fallback.fetched_at)
+                        fallback.provider_chain = [item.name for item in self.providers]
+                        fallback.quality_issues = list(dict.fromkeys([
+                            *fallback.quality_issues,
+                            "全部在线行情源暂不可用，当前使用过期本地缓存",
+                        ]))
+                        return fallback
+
+                response = await self._run_bar_flight(cache_key, normalized_limit, online)
 
         response.bars = response.bars[-normalized_limit:]
         response.requested_limit = normalized_limit
@@ -232,8 +324,27 @@ class MarketDataService:
             response.bars = [bar for bar in response.bars if bar.time.startswith(trading_date)]
         return response
 
-    async def get_quote(self, raw_symbol: str) -> QuoteResponse:
+    async def get_quote(self, raw_symbol: str, refresh: bool = False) -> QuoteResponse:
         instrument = normalize_symbol(raw_symbol)
+        flight_key = instrument.provider_symbol
+        cached = self._quote_cache.get(flight_key)
+        if not refresh and cached is not None and time.monotonic() - cached[0] <= 15:
+            return deepcopy(cached[1])
+        existing = self._quote_flights.get(flight_key)
+        if existing is not None:
+            return deepcopy(await asyncio.shield(existing))
+
+        task = asyncio.create_task(self._get_quote_online(instrument))
+        self._quote_flights[flight_key] = task
+        try:
+            response = await asyncio.shield(task)
+            self._quote_cache[flight_key] = (time.monotonic(), deepcopy(response))
+            return deepcopy(response)
+        finally:
+            if task.done() and self._quote_flights.get(flight_key) is task:
+                self._quote_flights.pop(flight_key, None)
+
+    async def _get_quote_online(self, instrument: Instrument) -> QuoteResponse:
         errors: list[str] = []
         for index, provider in enumerate(self.providers):
             try:
@@ -251,7 +362,7 @@ class MarketDataService:
                 previous = bars[-2].close if len(bars) > 1 else None
                 self._record_provider_result(provider.name, None)
                 return QuoteResponse(
-                    instrument=self.resolve(raw_symbol, name),
+                    instrument=self.resolve(instrument.provider_symbol, name),
                     last=last.close,
                     previous_close=previous,
                     open=last.open,

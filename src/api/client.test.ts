@@ -101,4 +101,36 @@ describe('market API client', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(3)
   })
+
+  it('does not retain a stale-while-revalidate response in browser memory', async () => {
+    const stale = { ...response, stale: true, cached: true }
+    const fresh = { ...response, stale: false, cached: false }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => stale })
+      .mockResolvedValueOnce({ ok: true, json: async () => fresh })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const options = { timeframe: '1d' as const, adjustment: 'qfq' as const, limit: 640 }
+    expect((await getMarketBars('001280', options)).stale).toBe(true)
+    expect((await getMarketBars('001280', options)).stale).toBe(false)
+    await getMarketBars('001280', options)
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+  })
+
+  it('bypasses quote memory cache on manual refresh', async () => {
+    const quoteResponse = {
+      instrument: response.instrument, last: 10, previous_close: 9, open: 9.5, high: 10, low: 9.4,
+      volume: 100, timestamp: '2026-08-11', source: 'test', delayed: true, fallback_used: false, quality_issues: [],
+    }
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => quoteResponse })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await getMarketQuote('001280')
+    await getMarketQuote('001280')
+    await getMarketQuote('001280', undefined, true)
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    expect(fetchMock.mock.calls[1]?.[0]).toContain('refresh=true')
+  })
 })

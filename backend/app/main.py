@@ -30,7 +30,10 @@ async def lifespan(_: FastAPI):
     settings.data_dir.mkdir(parents=True, exist_ok=True)
     journal.initialize()
     portfolio.initialize()
-    yield
+    try:
+        yield
+    finally:
+        await market_data.close()
 
 
 app = FastAPI(
@@ -98,9 +101,9 @@ async def market_bars(
 
 
 @app.get("/api/market/quote/{symbol}", response_model=QuoteResponse, tags=["market-data"])
-async def market_quote(symbol: str) -> QuoteResponse:
+async def market_quote(symbol: str, refresh: bool = False) -> QuoteResponse:
     try:
-        return await market_data.get_quote(symbol)
+        return await market_data.get_quote(symbol, refresh=refresh)
     except SymbolError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     except (ProviderError, httpx.HTTPError, ValueError) as error:

@@ -18,23 +18,31 @@ class TencentProvider:
     latest_minute_url = "https://web.ifzq.gtimg.cn/appstock/app/minute/query"
     search_url = "https://smartbox.gtimg.cn/s3/"
 
-    def __init__(self, timeout_seconds: float = 12.0):
-        self.timeout = httpx.Timeout(timeout_seconds)
+    def __init__(self, timeout_seconds: float = 7.0, client: httpx.AsyncClient | None = None):
+        self._owns_client = client is None
+        self.client = client or httpx.AsyncClient(
+            timeout=httpx.Timeout(timeout_seconds, connect=min(2.5, timeout_seconds)),
+            limits=httpx.Limits(max_connections=30, max_keepalive_connections=10, keepalive_expiry=30),
+            trust_env=False,
+            headers={"User-Agent": "stock-analysis-dashboard/1.0"},
+        )
+
+    async def close(self) -> None:
+        if self._owns_client:
+            await self.client.aclose()
 
     async def _get(self, url: str, params: dict[str, str]) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
-            response = await client.get(url, params=params, headers={"User-Agent": "stock-analysis-dashboard/0.3"})
-            response.raise_for_status()
-            payload = response.json()
+        response = await self.client.get(url, params=params)
+        response.raise_for_status()
+        payload = response.json()
         if payload.get("code") != 0:
             raise ProviderError(payload.get("msg") or "Market-data provider returned an error")
         return payload
 
     async def _get_text(self, url: str, params: dict[str, str]) -> str:
-        async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as client:
-            response = await client.get(url, params=params, headers={"User-Agent": "stock-analysis-dashboard/1.0"})
-            response.raise_for_status()
-            return response.text
+        response = await self.client.get(url, params=params)
+        response.raise_for_status()
+        return response.text
 
     @staticmethod
     def _parse_search_payload(payload: str, query: str, limit: int) -> list[InstrumentSearchResult]:

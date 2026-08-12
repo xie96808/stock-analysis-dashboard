@@ -48,6 +48,7 @@ import { evaluateAlerts, parseAlertEvents, parseAlertRules, selectAlertBars, typ
 import { parseWatchlist, upsertWatchlist, type WatchlistItem } from './watchlist/model'
 import { isCompleteMarketSymbol } from './search/model'
 import { cacheSuggestions, getCachedSuggestions } from './search/cache'
+import { loadLocalInstrumentIndex, rememberRecentInstrument, searchLocalInstruments } from './search/localIndex'
 import './styles.css'
 
 const LazyMarkdown = lazy(() => import('react-markdown'))
@@ -459,6 +460,22 @@ export default function App() {
   }, [watchlist])
 
   useEffect(() => {
+    const controller = new AbortController()
+    const warm = () => loadLocalInstrumentIndex(controller.signal).catch(() => null)
+    const idleWindow = window as Window & {
+      requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number
+      cancelIdleCallback?: (id: number) => void
+    }
+    const idleId = idleWindow.requestIdleCallback?.(warm, { timeout: 1_500 })
+    const timer = idleId == null ? window.setTimeout(warm, 350) : null
+    return () => {
+      controller.abort()
+      if (idleId != null) idleWindow.cancelIdleCallback?.(idleId)
+      if (timer != null) window.clearTimeout(timer)
+    }
+  }, [])
+
+  useEffect(() => {
     const query = symbolInput.trim()
     if (!query) {
       setSymbolSuggestions([])
@@ -477,7 +494,8 @@ export default function App() {
     const controller = new AbortController()
     const timer = window.setTimeout(() => {
       setSymbolSearchLoading(true)
-      searchInstruments(query, 5, controller.signal)
+      searchLocalInstruments(query, 5, controller.signal)
+        .then((localResults) => localResults.length ? localResults : searchInstruments(query, 5, controller.signal))
         .then((results) => {
           cacheSuggestions(query, results)
           setSymbolSuggestions(results)
@@ -491,7 +509,7 @@ export default function App() {
         .finally(() => {
           if (!controller.signal.aborted) setSymbolSearchLoading(false)
         })
-    }, 80)
+    }, 25)
     return () => {
       window.clearTimeout(timer)
       controller.abort()
@@ -675,6 +693,9 @@ export default function App() {
         })
         setMarketState('ready')
         setInstrumentSwitchLabel(null)
+        if (response.stale && !forceRefresh) {
+          window.setTimeout(() => requestMarketRefreshRef.current(), 900)
+        }
         if (forceRefresh) notify(`已刷新${response.instrument.name ?? response.instrument.symbol}最新行情`)
       })
       .catch((error: unknown) => {
@@ -706,7 +727,7 @@ export default function App() {
         if (requestId === marketRequestIdRef.current) setMarketRefreshing(false)
       })
 
-    getMarketQuote(activeSymbol, controller.signal)
+    getMarketQuote(activeSymbol, controller.signal, forceRefresh)
       .then((currentQuote) => {
         if (requestId === marketRequestIdRef.current) setQuote(currentQuote)
       })
@@ -763,6 +784,7 @@ export default function App() {
   }, [closeIntraday, selectedDay])
 
   const loadSuggestion = useCallback((suggestion: InstrumentSuggestion) => {
+    rememberRecentInstrument(suggestion)
     setInstrumentSwitchLabel(`${suggestion.name} · ${suggestion.symbol}`)
     setActiveSymbol(suggestion.input)
     setSymbolInput('')
@@ -796,7 +818,8 @@ export default function App() {
         notify(`正在加载${resolved.symbol}`)
         return
       }
-      const suggestions = await searchInstruments(value, 1)
+      const localSuggestions = await searchLocalInstruments(value, 1).catch(() => [])
+      const suggestions = localSuggestions.length ? localSuggestions : await searchInstruments(value, 1)
       if (suggestions[0]) {
         loadSuggestion(suggestions[0])
         return

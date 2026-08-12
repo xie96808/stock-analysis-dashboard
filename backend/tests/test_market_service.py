@@ -55,6 +55,17 @@ class FailingProvider(FakeProvider):
         raise ProviderError("simulated outage")
 
 
+class SlowProvider(FakeProvider):
+    async def daily_bars(self, instrument: Instrument, adjustment: Adjustment, limit: int):
+        self.calls += 1
+        await asyncio.sleep(0.03)
+        return (
+            [BarPayload(time="2026-08-11", open=11, high=13, low=10, close=12, volume=120)],
+            "慢速测试标的",
+            {},
+        )
+
+
 def test_service_caches_daily_bars(tmp_path: Path) -> None:
     provider = FakeProvider()
     service = MarketDataService(tmp_path, provider=provider)  # type: ignore[arg-type]
@@ -149,3 +160,82 @@ def test_service_flags_invalid_ohlc_without_silently_rewriting_it(tmp_path: Path
     result = asyncio.run(MarketDataService(tmp_path, provider=provider).get_bars("001280", "1d", "qfq", 20))  # type: ignore[arg-type]
     assert result.bars[0].high == 9
     assert any("OHLC" in issue for issue in result.quality_issues)
+
+
+def test_service_coalesces_concurrent_identical_bar_requests(tmp_path: Path) -> None:
+    provider = SlowProvider()
+    service = MarketDataService(tmp_path, provider=provider)  # type: ignore[arg-type]
+
+    async def run():
+        return await asyncio.gather(*[
+            service.get_bars("001280", "1d", "qfq", 20)
+            for _ in range(5)
+        ])
+
+    results = asyncio.run(run())
+    assert provider.calls == 1
+    assert [result.bars[-1].close for result in results] == [12] * 5
+
+
+def test_service_does_not_reuse_a_smaller_inflight_payload_for_a_larger_request(tmp_path: Path) -> None:
+    provider = SlowProvider()
+    service = MarketDataService(tmp_path, provider=provider)  # type: ignore[arg-type]
+
+    async def run():
+        smaller = asyncio.create_task(service.get_bars("001280", "1d", "qfq", 1))
+        await asyncio.sleep(0)
+        larger = asyncio.create_task(service.get_bars("001280", "1d", "qfq", 20))
+        return await asyncio.gather(smaller, larger)
+
+    smaller, larger = asyncio.run(run())
+    assert smaller.requested_limit == 1
+    assert larger.requested_limit == 20
+    assert provider.calls == 2
+
+
+def test_expired_cache_returns_immediately_and_refreshes_in_background(tmp_path: Path) -> None:
+    provider = FakeProvider()
+    service = MarketDataService(tmp_path, provider=provider)  # type: ignore[arg-type]
+    asyncio.run(service.get_bars("001280", "1d", "qfq", 20))
+    provider.calls = 0
+    service._ttl = lambda _: -1  # type: ignore[method-assign]
+
+    async def run():
+        result = await service.get_bars("001280", "1d", "qfq", 20)
+        assert result.cached is True
+        assert result.stale is True
+        assert "后台正在更新行情" in result.quality_issues[-1]
+        await asyncio.gather(*list(service._refresh_tasks))
+        return result
+
+    result = asyncio.run(run())
+    assert result.bars[-1].close == 12
+    assert provider.calls == 1
+
+
+def test_smaller_background_refresh_preserves_larger_cache_coverage(tmp_path: Path) -> None:
+    provider = FakeProvider()
+    service = MarketDataService(tmp_path, provider=provider)  # type: ignore[arg-type]
+    asyncio.run(service.get_bars("001280", "1d", "qfq", 2000))
+    service._ttl = lambda _: -1  # type: ignore[method-assign]
+
+    async def run() -> None:
+        await service.get_bars("001280", "1d", "qfq", 20)
+        await asyncio.gather(*list(service._refresh_tasks))
+
+    asyncio.run(run())
+    cached = service.cache.get_any("v3-sz001280-1d-qfq")
+    assert cached is not None
+    assert cached["requested_limit"] == 2000
+
+
+def test_quote_cache_avoids_duplicate_fetch_and_refresh_bypasses_it(tmp_path: Path) -> None:
+    provider = FakeProvider()
+    service = MarketDataService(tmp_path, provider=provider)  # type: ignore[arg-type]
+
+    first = asyncio.run(service.get_quote("001280"))
+    second = asyncio.run(service.get_quote("001280"))
+    refreshed = asyncio.run(service.get_quote("001280", refresh=True))
+
+    assert first.last == second.last == refreshed.last == 12
+    assert provider.calls == 2

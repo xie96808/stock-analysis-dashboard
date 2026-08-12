@@ -14,6 +14,7 @@
     "typecheck": "tsc -b --pretty false",
     "test:frontend": "vitest run",
     "test:backend": ".venv/bin/python -m pytest backend/tests -q",
+    "index:build": ".venv/bin/python scripts/build-instrument-index.py",
     "check": "bash ./scripts/check.sh",
     "release:bundle": "bash ./scripts/package-release.sh"
   },
