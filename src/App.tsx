@@ -1083,7 +1083,18 @@ export default function App() {
   const exportProjectAction = async () => {
     try {
       const result = await exportJournalProject()
-      notify(`完整项目已导出：${result.path}`)
+      const response = await fetch(result.download_url)
+      if (!response.ok) throw new Error(`导出文件下载失败（${response.status}）`)
+      const objectUrl = URL.createObjectURL(await response.blob())
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = result.filename
+      link.style.display = 'none'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
+      notify(`完整项目已导出并开始下载：${result.filename}`)
     } catch (error) {
       notify(error instanceof Error ? `项目导出失败：${error.message}` : '项目导出失败')
     }

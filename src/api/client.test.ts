@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { clearMarketMemoryCache, createPaperTrade, getMarketBars, getMarketQuote, searchInstruments } from './client'
+import { clearMarketMemoryCache, createPaperTrade, exportJournalProject, getMarketBars, getMarketQuote, searchInstruments } from './client'
 
 const response = {
   instrument: {
@@ -132,5 +132,16 @@ describe('market API client', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(2)
     expect(fetchMock.mock.calls[1]?.[0]).toContain('refresh=true')
+  })
+
+  it('returns a downloadable project export descriptor', async () => {
+    const descriptor = {
+      path: '/data/exports/dashboard.zip',
+      download_url: '/api/journal/artifact?path=exports/dashboard.zip',
+      filename: 'dashboard.zip',
+    }
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => descriptor }))
+
+    await expect(exportJournalProject()).resolves.toEqual(descriptor)
   })
 })

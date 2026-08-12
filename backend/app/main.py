@@ -227,7 +227,12 @@ async def export_journal_record(record_id: str) -> dict[str, str]:
 
 @app.post("/api/journal/export-project", tags=["journal"])
 async def export_journal_project() -> dict[str, str]:
-    return {"path": str(journal.export_project())}
+    target = journal.export_project()
+    return {
+        "path": str(target),
+        "download_url": f"/api/journal/artifact?path={target.relative_to(settings.data_dir)}",
+        "filename": target.name,
+    }
 
 
 @app.post("/api/journal/import-project", tags=["journal"])

@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -12,6 +13,12 @@ async def get(path: str) -> httpx.Response:
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
         return await client.get(path)
+
+
+async def post(path: str) -> httpx.Response:
+    transport = httpx.ASGITransport(app=app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        return await client.post(path)
 
 
 def test_health() -> None:
@@ -63,3 +70,19 @@ def test_search_instruments_returns_ranked_suggestions_without_loading_a_chart()
     assert response.status_code == 200
     assert response.json()[0]["input"] == "sh600988"
     search.assert_awaited_once_with("赤峰黄金", 5)
+
+
+def test_project_export_returns_a_browser_download_url(tmp_path) -> None:
+    archive = tmp_path / "stock-dashboard.zip"
+    archive.write_bytes(b"zip")
+    with patch("backend.app.main.journal.export_project", return_value=archive), patch(
+        "backend.app.main.settings", SimpleNamespace(data_dir=tmp_path)
+    ):
+        response = asyncio.run(post("/api/journal/export-project"))
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "path": str(archive),
+        "download_url": "/api/journal/artifact?path=stock-dashboard.zip",
+        "filename": "stock-dashboard.zip",
+    }
