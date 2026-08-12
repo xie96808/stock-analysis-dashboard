@@ -69,6 +69,7 @@ type Props = {
   preserveViewOnDataChange: boolean
   onCommitDrawings: (next: Drawing[]) => void
   fontScale: 'standard' | 'large' | 'xlarge'
+  colorMode: 'light' | 'dark'
   onHoverBar: (bar: StockBar | null) => void
   onSelectBar: (bar: StockBar) => void
   onSelectChipDate: (bar: StockBar) => void
@@ -175,6 +176,7 @@ export function ChartWorkbench({
   preserveViewOnDataChange,
   onCommitDrawings,
   fontScale,
+  colorMode,
   onHoverBar,
   onSelectBar,
   onSelectChipDate,
@@ -203,6 +205,7 @@ export function ChartWorkbench({
   activeToolRef.current = activeTool
   logPriceRef.current = logPrice
   const [intradayPrompt, setIntradayPrompt] = useState<IntradayPrompt | null>(null)
+  const [selectedProfilePrice, setSelectedProfilePrice] = useState<number | null>(null)
   const [geometry, setGeometry] = useState<OverlayGeometry>({
     profile: [],
     profileStats: { poc: 0, vah: 0, val: 0, pocY: null, vahY: null, valY: null },
@@ -269,12 +272,16 @@ export function ChartWorkbench({
       width: host.clientWidth,
       height: host.clientHeight,
       layout: {
-        background: { type: ColorType.Solid, color: '#ffffff' },
-        textColor: '#535967',
+        background: { type: ColorType.Solid, color: colorMode === 'dark' ? '#121722' : '#ffffff' },
+        textColor: colorMode === 'dark' ? '#aeb8c8' : '#535967',
         fontFamily: 'Inter, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif',
         fontSize: chartFontSize,
         attributionLogo: false,
-        panes: { separatorColor: '#e5e8ee', separatorHoverColor: '#c7cedb', enableResize: true },
+        panes: {
+          separatorColor: colorMode === 'dark' ? '#2a3342' : '#e5e8ee',
+          separatorHoverColor: colorMode === 'dark' ? '#48566b' : '#c7cedb',
+          enableResize: true,
+        },
       },
       localization: {
         locale: 'zh-CN',
@@ -282,18 +289,18 @@ export function ChartWorkbench({
         timeFormatter: formatTime,
       },
       grid: {
-        vertLines: { color: '#eef0f4', style: LineStyle.Solid },
-        horzLines: { color: '#eef0f4', style: LineStyle.Solid },
+        vertLines: { color: colorMode === 'dark' ? '#232b38' : '#eef0f4', style: LineStyle.Solid },
+        horzLines: { color: colorMode === 'dark' ? '#232b38' : '#eef0f4', style: LineStyle.Solid },
       },
       rightPriceScale: {
         visible: true,
-        borderColor: '#dde1e8',
+        borderColor: colorMode === 'dark' ? '#334052' : '#dde1e8',
         scaleMargins: { top: 0.09, bottom: 0.08 },
         minimumWidth: priceScaleWidth,
       },
       leftPriceScale: { visible: false },
       timeScale: {
-        borderColor: '#dde1e8',
+        borderColor: colorMode === 'dark' ? '#334052' : '#dde1e8',
         timeVisible: isMinute,
         secondsVisible: false,
         rightOffset: isMinute ? 3 : 6,
@@ -550,7 +557,7 @@ export function ChartWorkbench({
       chartRef.current = null
       candleRef.current = null
     }
-  }, [anchoredRange, bars, byTime, candleTheme, cleanMode, dataRevision, fontScale, indicators, isMinute, latestBar, macd, market, preserveViewOnDataChange, symbol, timeframe])
+  }, [anchoredRange, bars, byTime, candleTheme, cleanMode, colorMode, dataRevision, fontScale, indicators, isMinute, latestBar, macd, market, preserveViewOnDataChange, symbol, timeframe])
 
   useEffect(() => {
     const frame = requestAnimationFrame(() => refreshGeometryRef.current())
@@ -619,6 +626,10 @@ export function ChartWorkbench({
     if (overflow > 0) source.forEach((item) => { item.y -= overflow })
     return source
   }, [geometry.mainPaneHeight, geometry.profileStats])
+  const selectedProfile = selectedProfilePrice == null
+    ? null
+    : geometry.profile.find((row) => Math.abs(row.price - selectedProfilePrice) < 1e-8) ?? null
+  const profileTotal = geometry.profile.reduce((sum, row) => sum + row.width, 0)
 
   return (
     <div className="chart-stage" aria-label={`${instrumentLabel}${timeframe}图表`}>
@@ -718,16 +729,27 @@ export function ChartWorkbench({
           {geometry.profile.map((row, index) => {
             const maxWidth = Math.max(...geometry.profile.map((item) => item.width), 1)
             return (
-              <div
+              <button
+                type="button"
                 key={`${row.y}-${index}`}
                 className={`profile-row${row.emphasis ? ' is-poc' : ''}${row.inValueArea ? ' is-value-area' : ''}`}
                 style={{ top: row.y, width: `${Math.max(3, row.width / maxWidth * 100)}%` }}
+                aria-label={`${row.price.toFixed(2)}元，成交量${formatVolume(row.width)}，占可视分布${profileTotal ? (row.width / profileTotal * 100).toFixed(2) : '0.00'}%`}
+                title={`${row.price.toFixed(2)} · ${formatVolume(row.width)}`}
+                onClick={() => setSelectedProfilePrice((current) => current === row.price ? null : row.price)}
               >
                 <span className="profile-sell" style={{ flex: row.sell }} />
                 <span className="profile-buy" style={{ flex: row.buy }} />
-              </div>
+              </button>
             )
           })}
+          {selectedProfile && (
+            <div className="profile-row-detail" role="status" style={{ top: Math.max(56, Math.min(geometry.mainPaneHeight - 44, selectedProfile.y)) }}>
+              <strong>{selectedProfile.price.toFixed(2)}</strong>
+              <span>{formatVolume(selectedProfile.width)}</span>
+              <em>{profileTotal ? (selectedProfile.width / profileTotal * 100).toFixed(2) : '0.00'}%</em>
+            </div>
+          )}
           <div className="profile-legend">
             <span><i className="legend-sell" />主动卖</span>
             <span><i className="legend-buy" />主动买</span>
