@@ -642,13 +642,9 @@ export default function App() {
         limit: 2000,
         refresh: forceRefresh,
       }, controller.signal)
-    Promise.all([
-      primaryBarsRequest,
-      getMarketQuote(activeSymbol, controller.signal).catch(() => null),
-      chipBarsRequest.catch(() => null),
-      alertBarsRequest.catch(() => null),
-    ])
-      .then(([response, currentQuote, chipResponse, alertResponse]) => {
+    setQuote(null)
+    primaryBarsRequest
+      .then((response) => {
         if (requestId !== marketRequestIdRef.current) return
         const nextBars = toStockBars(response)
         if (!nextBars.length) throw new Error('行情源未返回K线')
@@ -663,10 +659,9 @@ export default function App() {
         }
         setChartDataRevision((current) => ({ id: current.id + 1, preserveView: forceRefresh }))
         setBars(nextBars)
-        setChipBars(chipResponse ? toStockBars(chipResponse) : selectedTimeframe === '1d' ? nextBars : [])
-        setDailyAlertBars(alertResponse ? toStockBars(alertResponse) : [])
+        setChipBars(selectedTimeframe === '1d' && chipAdjustment === adjustment ? nextBars : [])
+        setDailyAlertBars(selectedTimeframe === '1d' && adjustment === 'qfq' ? nextBars : [])
         setInstrument(response.instrument)
-        setQuote(currentQuote)
         setMarketMeta({
           source: response.source,
           cached: response.cached,
@@ -710,6 +705,28 @@ export default function App() {
       .finally(() => {
         if (requestId === marketRequestIdRef.current) setMarketRefreshing(false)
       })
+
+    getMarketQuote(activeSymbol, controller.signal)
+      .then((currentQuote) => {
+        if (requestId === marketRequestIdRef.current) setQuote(currentQuote)
+      })
+      .catch(() => null)
+
+    if (chipBarsRequest !== primaryBarsRequest) {
+      chipBarsRequest
+        .then((response) => {
+          if (requestId === marketRequestIdRef.current) setChipBars(toStockBars(response))
+        })
+        .catch(() => null)
+    }
+
+    if (alertBarsRequest !== primaryBarsRequest) {
+      alertBarsRequest
+        .then((response) => {
+          if (requestId === marketRequestIdRef.current) setDailyAlertBars(toStockBars(response))
+        })
+        .catch(() => null)
+    }
     return () => controller.abort()
   }, [activeSymbol, adjustment, marketRefreshRevision, notify, timeframe])
 
@@ -797,7 +814,7 @@ export default function App() {
     }
   }
 
-  const addCurrentToWatchlist = () => {
+  const toggleCurrentWatchlist = () => {
     const item: WatchlistItem = {
       key: instrument.key,
       symbol: instrument.symbol,
@@ -810,8 +827,10 @@ export default function App() {
       reviewedAt: null,
     }
     const existed = watchlist.some((entry) => entry.key === item.key)
-    setWatchlist((current) => upsertWatchlist(current, item))
-    notify(existed ? `${displayName}已在自选股中` : `已将${displayName}加入自选股`)
+    setWatchlist((current) => existed
+      ? current.filter((entry) => entry.key !== item.key)
+      : upsertWatchlist(current, item))
+    notify(existed ? `已将${displayName}移出自选股` : `已将${displayName}加入自选股`)
   }
 
   const selectWatchlistItem = (item: WatchlistItem) => {
@@ -1198,9 +1217,9 @@ export default function App() {
           <button className="nav-item" onClick={() => { setJournalOpen(true); notify('研究日志已打开，可按日期查看预测与revision') }}>复盘</button>
           <button className={`nav-item${backtestOpen ? ' is-active' : ''}`} onClick={() => setBacktestOpen(true)}>回测</button>
           <button className={`nav-item${alertOpen ? ' is-active' : ''}`} onClick={() => setAlertOpen(true)}>提醒{alertRules.filter((rule) => rule.enabled).length ? ` ${alertRules.filter((rule) => rule.enabled).length}` : ''}</button>
-          <button className={`nav-item${watchlistOpen ? ' is-active' : ''}`} onClick={() => setWatchlistOpen(true)}>自选 {watchlist.length}</button>
+          <button className={`nav-item${watchlistOpen ? ' is-active' : ''}`} onClick={() => setWatchlistOpen(true)}>自选（{watchlist.length}）</button>
           <button className={`nav-item${portfolioOpen ? ' is-active' : ''}`} onClick={() => setPortfolioOpen(true)}>模拟</button>
-          <button className="nav-item" onClick={() => notify(`${displayName} · ${marketMeta.source}${marketMeta.cached ? ' · 缓存命中' : ''}`)}>数据</button>
+          <button className="nav-item" title="查看当前行情数据来源" onClick={() => notify(`${displayName} · ${marketMeta.source}${marketMeta.cached ? ' · 缓存命中' : ''}`)}>行情源</button>
         </nav>
 
         <div className="header-actions">
@@ -1240,7 +1259,17 @@ export default function App() {
       <section className="quote-header">
         <div className="instrument">
           <div className="instrument-title">
-            <button className={`favorite${watchlist.some((item) => item.key === instrument.key) ? ' is-saved' : ''}`} type="button" aria-label="加入自选股" title="加入自选股" onClick={addCurrentToWatchlist}>★</button>
+            {(() => {
+              const saved = watchlist.some((item) => item.key === instrument.key)
+              return <button
+                className={`favorite${saved ? ' is-saved' : ''}`}
+                type="button"
+                aria-label={saved ? '移出自选股' : '加入自选股'}
+                title={saved ? '移出自选股' : '加入自选股'}
+                aria-pressed={saved}
+                onClick={toggleCurrentWatchlist}
+              >{saved ? '★' : '☆'}</button>
+            })()}
             <strong>{displayName}</strong>
             <span className="instrument-code">{instrument.symbol}</span>
             <span className="market-tag">{instrument.exchange}</span>

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { createPaperTrade, getMarketBars, searchInstruments } from './client'
+import { clearMarketMemoryCache, createPaperTrade, getMarketBars, getMarketQuote, searchInstruments } from './client'
 
 const response = {
   instrument: {
@@ -28,7 +28,10 @@ const response = {
 }
 
 describe('market API client', () => {
-  afterEach(() => vi.unstubAllGlobals())
+  afterEach(() => {
+    clearMarketMemoryCache()
+    vi.unstubAllGlobals()
+  })
 
   it('forces a provider refresh and forwards the selected trading date', async () => {
     const fetchMock = vi.fn().mockResolvedValue({
@@ -75,5 +78,27 @@ describe('market API client', () => {
     expect(parsed.pathname).toBe('/api/instruments/search')
     expect(parsed.searchParams.get('q')).toBe('赤峰黄金')
     expect(parsed.searchParams.get('limit')).toBe('5')
+  })
+
+  it('reuses recent bars and quotes while bypassing bars cache for a manual refresh', async () => {
+    const quoteResponse = {
+      instrument: response.instrument, last: 10, previous_close: 9, open: 9.5, high: 10, low: 9.4,
+      volume: 100, timestamp: '2026-08-11', source: 'test', delayed: true, fallback_used: false, quality_issues: [],
+    }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => response })
+      .mockResolvedValueOnce({ ok: true, json: async () => quoteResponse })
+      .mockResolvedValueOnce({ ok: true, json: async () => response })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const options = { timeframe: '1d' as const, adjustment: 'qfq' as const, limit: 640 }
+    await getMarketBars('001280', options)
+    await getMarketBars('001280', options)
+    await getMarketQuote('001280')
+    await getMarketQuote('001280')
+    await getMarketBars('001280', { ...options, refresh: true })
+    await getMarketBars('001280', options)
+
+    expect(fetchMock).toHaveBeenCalledTimes(3)
   })
 })

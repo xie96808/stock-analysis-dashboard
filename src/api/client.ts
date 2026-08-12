@@ -251,6 +251,32 @@ async function requestJson<T>(path: string, signal?: AbortSignal, init?: Request
   return response.json() as Promise<T>
 }
 
+type CachedMarketResponse<T> = { savedAt: number; value: T }
+
+const marketBarsMemoryCache = new Map<string, CachedMarketResponse<MarketBarsResponse>>()
+const marketQuoteMemoryCache = new Map<string, CachedMarketResponse<MarketQuoteResponse>>()
+
+function readMarketCache<T>(cache: Map<string, CachedMarketResponse<T>>, key: string, ttlMs: number) {
+  const cached = cache.get(key)
+  if (!cached) return null
+  if (Date.now() - cached.savedAt > ttlMs) {
+    cache.delete(key)
+    return null
+  }
+  return cached.value
+}
+
+function writeMarketCache<T>(cache: Map<string, CachedMarketResponse<T>>, key: string, value: T) {
+  cache.set(key, { savedAt: Date.now(), value })
+  if (cache.size > 40) cache.delete(cache.keys().next().value as string)
+  return value
+}
+
+export function clearMarketMemoryCache() {
+  marketBarsMemoryCache.clear()
+  marketQuoteMemoryCache.clear()
+}
+
 export function getApiHealth(signal?: AbortSignal) {
   return requestJson<ApiHealth>('/api/health', signal)
 }
@@ -284,13 +310,23 @@ export function getMarketBars(
     adjustment: options.adjustment,
     limit: String(options.limit ?? 640),
   })
-  if (options.refresh) query.set('refresh', 'true')
   if (options.tradingDate) query.set('trading_date', options.tradingDate)
-  return requestJson<MarketBarsResponse>(`/api/market/bars/${encodeURIComponent(symbol)}?${query}`, signal)
+  const cacheKey = `/api/market/bars/${encodeURIComponent(symbol)}?${query}`
+  if (options.refresh) query.set('refresh', 'true')
+  const path = `/api/market/bars/${encodeURIComponent(symbol)}?${query}`
+  const ttlMs = options.timeframe.endsWith('m') ? 30_000 : 10 * 60_000
+  const cached = options.refresh ? null : readMarketCache(marketBarsMemoryCache, cacheKey, ttlMs)
+  if (cached) return Promise.resolve({ ...cached, cached: true })
+  return requestJson<MarketBarsResponse>(path, signal)
+    .then((response) => writeMarketCache(marketBarsMemoryCache, cacheKey, response))
 }
 
 export function getMarketQuote(symbol: string, signal?: AbortSignal) {
-  return requestJson<MarketQuoteResponse>(`/api/market/quote/${encodeURIComponent(symbol)}`, signal)
+  const path = `/api/market/quote/${encodeURIComponent(symbol)}`
+  const cached = readMarketCache(marketQuoteMemoryCache, path, 30_000)
+  if (cached) return Promise.resolve(cached)
+  return requestJson<MarketQuoteResponse>(path, signal)
+    .then((response) => writeMarketCache(marketQuoteMemoryCache, path, response))
 }
 
 export function getMarketProviders(signal?: AbortSignal) {

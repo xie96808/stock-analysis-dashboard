@@ -23,8 +23,14 @@ export function WatchlistPanel({ currentKey, items, onChange, onSelect, onClose,
     onSelect(item)
   }
 
-  return <div className="watchlist-backdrop" role="dialog" aria-modal="true" aria-label="自选股与批量复盘">
-    <aside className="watchlist-panel">
+  return <div
+    className="watchlist-backdrop"
+    role="dialog"
+    aria-modal="true"
+    aria-label="自选股与批量复盘"
+    onMouseDown={(event) => { if (event.target === event.currentTarget) onClose() }}
+  >
+    <aside className="watchlist-panel" onMouseDown={(event) => event.stopPropagation()}>
       <header><div><span className="eyebrow">自选与复盘队列</span><h2>我的自选股</h2><p>{items.length} 只 · {pendingCount} 只待复盘</p></div><button aria-label="关闭自选股" onClick={onClose}>×</button></header>
       <div className="watchlist-summary"><button className="is-primary" onClick={next}>下一只待复盘</button><button onClick={() => onChange(items.map((item) => updateReviewStatus(item, 'pending')))}>重置今日队列</button></div>
       <nav aria-label="自选股筛选">{(['all', 'pending', 'focus', 'reviewed'] as const).map((value) => <button key={value} className={filter === value ? 'is-active' : ''} onClick={() => setFilter(value)}>{value === 'all' ? '全部' : statusLabels[value]}{value !== 'all' ? ` ${items.filter((item) => item.status === value).length}` : ''}</button>)}</nav>

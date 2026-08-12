@@ -585,13 +585,16 @@ button {
   padding: 0;
   border: 0;
   background: transparent;
-  color: #f0ae2e;
+  color: var(--muted-2);
   font-size: 16px;
   cursor: pointer;
-  filter: grayscale(1);
+  filter: none;
 }
 
-.favorite.is-saved { filter: none; }
+.favorite.is-saved { color: #f0ae2e; }
+
+.favorite:hover,
+.favorite:focus-visible { color: #f0ae2e; transform: scale(1.08); }
 
 .instrument-code {
   color: #4d5563;
@@ -3036,6 +3039,10 @@ button {
 .watchlist-empty { min-height: 260px; display: grid; place-content: center; justify-items: center; gap: 7px; color: var(--muted); }
 .watchlist-empty strong { color: var(--text); font-size: 16px; }
 .watchlist-panel > footer { padding: 13px 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
+
+.app-shell[data-color-mode="dark"] .watchlist-panel { background: var(--surface); }
+.app-shell[data-color-mode="dark"] .watchlist-summary { background: var(--surface-soft); }
+.app-shell[data-color-mode="dark"] .watchlist-items article { background: var(--surface-soft); }
 
 .portfolio-backdrop { position: fixed; inset: 0; z-index: 86; display: grid; place-items: center; padding: 28px; background: rgba(20, 25, 34, 0.34); backdrop-filter: blur(4px); }
 .portfolio-dialog { width: min(1120px, 96vw); height: min(790px, 92vh); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 14px; background: #fff; box-shadow: 0 24px 70px rgba(25, 31, 42, 0.24); }
