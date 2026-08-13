@@ -28,6 +28,7 @@ import { extendedChipPanelHeight } from '../chips/panelPosition'
 import { resolveChipOverlayGeometry } from '../chips/geometry'
 import { barsInVisibleTimeRange } from '../profile/visibleRange'
 import { preservePriceModeViewport } from '../chart/priceModeViewport'
+import { futureProjectionBarCount } from '../chart/projection'
 
 export type { DistributionMode } from '../distributions/model'
 export type ProfileLayout = 'overlay' | 'dock'
@@ -337,7 +338,13 @@ export function ChartWorkbench({
       low: bar.low,
       close: bar.close,
     }))
-    const futureDates = !isMinute && latestBar ? createFutureTradingDates(latestBar.date) : []
+    // A fixed 270-bar projection tail is useful on desktop, but on a narrow
+    // phone canvas it can consume every visible logical slot (minBarSpacing is
+    // 1.1px) and push all real candles off-screen after fitContent(). Scale the
+    // projection area with the actual chart width so the latest history and a
+    // useful drawing runway are both visible.
+    const futureBarCount = futureProjectionBarCount(host.clientWidth)
+    const futureDates = !isMinute && latestBar ? createFutureTradingDates(latestBar.date, futureBarCount) : []
     candleData.push(...futureDates.map((date) => ({ time: businessDay(date) })))
     candleSeries.setData(candleData)
 

@@ -272,7 +272,9 @@ export default function App() {
   const [indicators, setIndicators] = useState<IndicatorConfig>(() => (
     parseIndicatorConfig(window.localStorage.getItem('dashboard-indicators-v1'), defaultIndicators)
   ))
-  const [journalOpen, setJournalOpen] = useState(true)
+  const [journalOpen, setJournalOpen] = useState(() => (
+    typeof window === 'undefined' || !window.matchMedia('(max-width: 760px)').matches
+  ))
   const [backtestOpen, setBacktestOpen] = useState(false)
   const [alertOpen, setAlertOpen] = useState(false)
   const [alertRules, setAlertRules] = useState<AlertRule[]>(() => parseAlertRules(window.localStorage.getItem('dashboard-alert-rules-v1')))
