@@ -1083,7 +1083,18 @@ export default function App() {
   const exportProjectAction = async () => {
     try {
       const result = await exportJournalProject()
-      notify(`完整项目已导出：${result.path}`)
+      const response = await fetch(result.download_url)
+      if (!response.ok) throw new Error(`导出文件下载失败（${response.status}）`)
+      const objectUrl = URL.createObjectURL(await response.blob())
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = result.filename
+      link.style.display = 'none'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
+      notify(`完整项目已导出并开始下载：${result.filename}`)
     } catch (error) {
       notify(error instanceof Error ? `项目导出失败：${error.message}` : '项目导出失败')
     }
@@ -1153,7 +1164,12 @@ export default function App() {
         <div className="brand" aria-label="研判看板">
           <span className="brand-mark">研</span>
           <span className="brand-name">研判</span>
-          <span className="brand-phase">v1.0</span>
+          <span
+            className="brand-phase"
+            title={`main ${import.meta.env.VITE_GIT_SHA || 'development'} · ${import.meta.env.VITE_BUILD_TIME || 'local build'}`}
+          >
+            v{import.meta.env.VITE_APP_VERSION || '1.0.2'} · {(import.meta.env.VITE_GIT_SHA || 'dev').slice(0, 7)}
+          </span>
         </div>
 
         <form className="symbol-search" onSubmit={submitSymbol}>
@@ -1779,7 +1795,7 @@ export default function App() {
         <span>坐标：{percentPrice ? '百分比' : logPrice ? 'Log 价格' : '普通价格'}</span>
         <span>时区：Asia/Shanghai</span>
         <span className={`api-state is-${apiState}`}>
-          <i />{apiState === 'ready' ? `本地API · ${apiHealth?.version}` : apiState === 'connecting' ? '正在连接API' : '样例降级模式'}
+          <i />{apiState === 'ready' ? `API · ${apiHealth?.version} · ${apiHealth?.revision?.slice(0, 7) || 'dev'}` : apiState === 'connecting' ? '正在连接API' : '样例降级模式'}
         </span>
         <span className="status-spacer" />
         <span>{marketState === 'ready' ? `${marketMeta.source} · ${marketMeta.delayed ? '收盘/延时' : '实时'}` : '样例数据 · 非实时'}</span>

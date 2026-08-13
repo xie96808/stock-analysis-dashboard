@@ -1,0 +1,1 @@
+stockdeploy ALL=(root) NOPASSWD: /usr/local/sbin/deploy-yanpan-release, /usr/local/sbin/rollback-yanpan-release

@@ -3,6 +3,8 @@ export type ApiHealth = {
   service: string
   phase: string
   version: string
+  revision: string
+  built_at: string | null
   timestamp: string
 }
 
@@ -387,7 +389,7 @@ export function exportJournalRecord(recordId: string) {
 }
 
 export function exportJournalProject() {
-  return requestJson<{ path: string }>('/api/journal/export-project', undefined, { method: 'POST' })
+  return requestJson<{ path: string; download_url: string; filename: string }>('/api/journal/export-project', undefined, { method: 'POST' })
 }
 
 export function importJournalProject(path: string) {

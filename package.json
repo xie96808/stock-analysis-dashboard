@@ -16,7 +16,8 @@
     "test:backend": ".venv/bin/python -m pytest backend/tests -q",
     "index:build": ".venv/bin/python scripts/build-instrument-index.py",
     "check": "bash ./scripts/check.sh",
-    "release:bundle": "bash ./scripts/package-release.sh"
+    "release:bundle": "bash ./scripts/package-release.sh",
+    "release:production": "bash ./deploy/package-production.sh"
   },
   "dependencies": {
     "html-to-image": "^1.11.13",
