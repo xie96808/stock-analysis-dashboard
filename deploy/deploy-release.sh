@@ -79,7 +79,7 @@ rm -f "$ROOT_ARCHIVE"
 [[ -f "$TEMP/release.env" ]] || die "release metadata missing"
 grep -qx "APP_GIT_SHA=$REVISION" "$TEMP/release.env" || die "release revision mismatch"
 
-python3 -m venv "$TEMP/.venv"
+python3.11 -m venv "$TEMP/.venv"
 "$TEMP/.venv/bin/pip" install --disable-pip-version-check --no-index \
   --find-links "$TEMP/wheelhouse" -r "$TEMP/requirements.lock"
 rm -rf "$TEMP/wheelhouse"

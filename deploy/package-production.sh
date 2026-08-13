@@ -27,7 +27,7 @@ find "$STAGING/release/backend" -type d -name __pycache__ -prune -exec rm -rf {}
 cp backend/requirements.lock "$STAGING/release/requirements.lock"
 "$PYTHON_BIN" -m pip download --disable-pip-version-check --only-binary=:all: \
   --timeout 60 --retries 5 \
-  --platform manylinux2014_x86_64 --implementation cp --python-version 310 \
+  --platform manylinux2014_x86_64 --implementation cp --python-version 311 \
   --dest "$STAGING/release/wheelhouse" -r backend/requirements.lock
 
 cat > "$STAGING/release/release.env" <<EOF
