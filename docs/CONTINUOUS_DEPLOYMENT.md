@@ -23,3 +23,12 @@ GitHub `production` environment configuration:
 - variable `PROD_USER`
 - secret `PROD_SSH_KEY`
 - secret `PROD_KNOWN_HOSTS`
+
+生产站点的访问口令由 Nginx 在静态文件和 API 之前统一校验。首次启用或轮换口令时，在服务器运行：
+
+```bash
+sudo ACCESS_USERNAME=yanpan ACCESS_PASSWORD='<new-password>' \
+  bash deploy/configure-access-password.sh
+```
+
+`/version.json` 仅公开版本号、commit SHA 和构建时间，供 GitHub Actions 在不保存站点口令的情况下完成部署验证；页面、静态资源和 API 仍要求登录。

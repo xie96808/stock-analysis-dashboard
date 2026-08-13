@@ -1158,6 +1158,37 @@ export default function App() {
     }
   }
 
+  const requestLandscapeView = async () => {
+    let enteredFullscreen = Boolean(document.fullscreenElement)
+    try {
+      if (!enteredFullscreen && document.documentElement.requestFullscreen) {
+        await document.documentElement.requestFullscreen()
+        enteredFullscreen = true
+      }
+    } catch {
+      // iPhone Safari does not expose element fullscreen. Orientation lock may
+      // still be available on another browser, so continue to feature-detect it.
+    }
+
+    const orientation = window.screen.orientation as ScreenOrientation & {
+      lock?: (orientation: 'landscape') => Promise<void>
+    }
+    if (orientation?.lock) {
+      try {
+        await orientation.lock('landscape')
+        notify('已进入横屏模式；双指可缩放K线')
+        return
+      } catch {
+        // Mobile browsers can reject programmatic rotation even after a user
+        // gesture. The responsive landscape layout still activates on rotation.
+      }
+    }
+
+    notify(enteredFullscreen
+      ? '当前浏览器未开放自动旋转，请将手机横向转动；双指可缩放K线'
+      : '请将手机横向转动；当前浏览器未开放自动旋转/全屏接口')
+  }
+
   return (
     <div className="app-shell" data-font-scale={fontScale} data-color-mode={colorMode}>
       <header className="app-header">
@@ -1289,9 +1320,10 @@ export default function App() {
               <option>短线计划</option>
             </select>
           </label>
-          <button className="icon-button" title="导出高清PNG" aria-label="导出高清PNG" onClick={exportChartPng}><Icon name="camera" /></button>
-          <button className="icon-button" title="全屏" onClick={toggleFullscreen}><Icon name="fullscreen" /></button>
-          <button className="icon-button" title={`K线配色：${candleTheme === 'mono' ? '黑白' : '红涨绿跌'}`} onClick={() => { setCandleTheme((value) => value === 'mono' ? 'cn' : 'mono'); notify('K线配色已切换') }}><Icon name="settings" /></button>
+          <button className="icon-button mobile-landscape-button" type="button" title="横屏查看" aria-label="横屏查看" onClick={requestLandscapeView}>↻</button>
+          <button className="icon-button export-chart-button" title="导出高清PNG" aria-label="导出高清PNG" onClick={exportChartPng}><Icon name="camera" /></button>
+          <button className="icon-button fullscreen-button" title="全屏" aria-label="全屏" onClick={toggleFullscreen}><Icon name="fullscreen" /></button>
+          <button className="icon-button candle-theme-button" title={`K线配色：${candleTheme === 'mono' ? '黑白' : '红涨绿跌'}`} aria-label="切换K线配色" onClick={() => { setCandleTheme((value) => value === 'mono' ? 'cn' : 'mono'); notify('K线配色已切换') }}><Icon name="settings" /></button>
         </div>
       </header>
 

@@ -32,6 +32,7 @@ body,
   height: 100%;
   margin: 0;
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
 button,
@@ -553,6 +554,12 @@ button {
   border-color: var(--border);
   background: var(--surface-soft);
   color: var(--text);
+}
+
+.mobile-landscape-button {
+  display: none;
+  font-size: 20px;
+  font-weight: 700;
 }
 
 .quote-header {
@@ -3273,5 +3280,252 @@ button {
 
   .font-scale-control > span {
     display: none;
+  }
+}
+
+/*
+ * Phone layout: keep the dense workstation functional instead of scaling a
+ * 1080px desktop canvas into a narrow viewport. Tool rows can be swiped, the
+ * chart receives the remaining viewport, and Lightweight Charts handles
+ * two-finger pinch zoom directly.
+ */
+@media (max-width: 760px) {
+  html,
+  body,
+  #root {
+    min-width: 0;
+    min-height: 0;
+  }
+
+  .app-shell {
+    grid-template-rows: 52px 68px 42px minmax(0, 1fr) 24px;
+    min-width: 0;
+    min-height: 0;
+    width: 100dvw;
+    height: 100dvh;
+  }
+
+  .app-header {
+    gap: 7px;
+    padding: 0 max(7px, env(safe-area-inset-right)) 0 max(7px, env(safe-area-inset-left));
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .app-header::-webkit-scrollbar,
+  .quote-header::-webkit-scrollbar,
+  .chart-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .brand {
+    min-width: auto;
+  }
+
+  .brand-name,
+  .brand-phase,
+  .header-nav,
+  .font-scale-control,
+  .workspace-select,
+  .export-chart-button,
+  .candle-theme-button {
+    display: none;
+  }
+
+  .symbol-search {
+    width: min(190px, 49vw);
+    min-width: 150px;
+    flex: 1 1 190px;
+  }
+
+  .symbol-suggestions {
+    width: min(360px, calc(100vw - 16px));
+  }
+
+  .header-actions {
+    margin-left: 0;
+    flex: 0 0 auto;
+  }
+
+  .mobile-landscape-button {
+    display: grid;
+  }
+
+  .quote-header {
+    gap: 12px;
+    padding: 0 9px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .instrument {
+    min-width: 278px;
+    gap: 10px;
+  }
+
+  .instrument-title {
+    gap: 5px;
+  }
+
+  .app-shell .instrument-title strong {
+    max-width: 94px;
+    overflow: hidden;
+    font-size: 16px;
+    text-overflow: ellipsis;
+  }
+
+  .app-shell .instrument-code {
+    font-size: 12px;
+  }
+
+  .app-shell .instrument-price strong {
+    font-size: 24px;
+  }
+
+  .app-shell .instrument-price span {
+    font-size: 11px;
+  }
+
+  .ohlc-strip {
+    min-width: max-content;
+    gap: 11px;
+  }
+
+  .axis-toggle {
+    flex: 0 0 auto;
+  }
+
+  .axis-toggle button {
+    min-width: 45px;
+  }
+
+  .chart-toolbar {
+    gap: 2px;
+    padding: 0 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    white-space: nowrap;
+  }
+
+  .chart-toolbar > * {
+    flex: 0 0 auto;
+  }
+
+  .timeframes button {
+    min-width: 41px;
+    padding: 0 6px;
+  }
+
+  .workspace,
+  .workspace.has-journal {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .drawing-rail button {
+    width: 32px;
+    height: 32px;
+  }
+
+  .chart-region {
+    min-width: 0;
+    grid-template-rows: 32px minmax(0, 1fr);
+  }
+
+  .chart-context {
+    padding: 0 7px;
+  }
+
+  .chart-context-actions > span,
+  .intraday-source {
+    display: none;
+  }
+
+  .journal-panel {
+    position: fixed;
+    inset: 52px 0 0 auto;
+    z-index: 70;
+    width: min(360px, 100vw);
+    border-left: 1px solid var(--border);
+    box-shadow: -16px 0 42px rgba(20, 27, 38, 0.18);
+  }
+
+  .indicator-popover {
+    top: 118px;
+    right: 8px;
+    width: min(340px, calc(100vw - 16px));
+  }
+
+  .instrument-loading {
+    top: 52px;
+    width: min(360px, calc(100vw - 20px));
+  }
+
+  .status-bar {
+    gap: 10px;
+    padding: 0 8px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .status-bar > span:nth-child(n + 4) {
+    display: none;
+  }
+
+  .toast {
+    right: 10px;
+    bottom: 34px;
+    left: 10px;
+    max-width: none;
+  }
+
+  .backtest-backdrop,
+  .portfolio-backdrop {
+    padding: 6px;
+  }
+
+  .backtest-dialog,
+  .portfolio-dialog {
+    width: calc(100vw - 12px);
+    height: calc(100dvh - 12px);
+  }
+
+  .backtest-body,
+  .portfolio-body {
+    display: block;
+    overflow: auto;
+  }
+
+  .backtest-config,
+  .paper-order {
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .backtest-results,
+  .portfolio-ledger {
+    min-height: 440px;
+  }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  .app-shell {
+    grid-template-rows: 46px 56px 38px minmax(0, 1fr);
+  }
+
+  .app-footer,
+  .status-bar {
+    display: none;
+  }
+
+  .journal-panel {
+    inset-block-start: 46px;
+  }
+
+  .quote-header {
+    gap: 16px;
+  }
+
+  .instrument {
+    min-width: 310px;
   }
 }
