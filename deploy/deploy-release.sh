@@ -102,7 +102,7 @@ systemctl reload nginx
 systemctl restart "$SERVICE"
 
 for _ in $(seq 1 30); do
-  if curl -fsS --max-time 2 http://127.0.0.1:8000/api/health | grep -q "\"revision\":\"$REVISION\""; then
+  if curl -fsS --max-time 2 http://127.0.0.1:8000/api/health 2>/dev/null | grep -q "\"revision\":\"$REVISION\""; then
     break
   fi
   sleep 1
