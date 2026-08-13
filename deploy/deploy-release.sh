@@ -44,6 +44,7 @@ rollback() {
   if [[ -n "$PREVIOUS" && -d "$PREVIOUS" ]]; then
     ln -sfn "$PREVIOUS" "$APP_ROOT/current.rollback"
     mv -Tf "$APP_ROOT/current.rollback" "$APP_ROOT/current"
+    nginx -t && systemctl reload nginx || true
     systemctl restart "$SERVICE" || true
   fi
   rm -rf "$TEMP"
@@ -96,6 +97,8 @@ fi
 mv "$TEMP" "$TARGET"
 ln -sfn "$TARGET" "$APP_ROOT/current.next"
 mv -Tf "$APP_ROOT/current.next" "$APP_ROOT/current"
+nginx -t
+systemctl reload nginx
 systemctl restart "$SERVICE"
 
 for _ in $(seq 1 30); do
@@ -105,7 +108,6 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 curl -fsS --max-time 3 http://127.0.0.1:8000/api/health | grep -q "\"revision\":\"$REVISION\""
-nginx -t
 curl -fsSk --max-time 5 --resolve "$DOMAIN:443:127.0.0.1" "https://$DOMAIN/version.json" | grep -q "\"revision\":\"$REVISION\""
 
 trap - ERR

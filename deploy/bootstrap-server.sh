@@ -44,6 +44,7 @@ sed -i 's#root /var/www/xietest.us.ci;#root /srv/yanpan-dashboard/current/dist;#
 
 systemctl daemon-reload
 nginx -t
+systemctl reload nginx
 systemctl restart stock-analysis-dashboard
 for _ in $(seq 1 20); do
   curl -fsS --max-time 2 http://127.0.0.1:8000/api/health >/dev/null && break

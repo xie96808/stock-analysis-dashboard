@@ -9,10 +9,11 @@ TARGET="$APP_ROOT/releases/$REVISION"
 exec 9>"$APP_ROOT/deploy.lock"; flock -n 9
 PREVIOUS="$(readlink -f "$APP_ROOT/current")"
 ln -sfn "$TARGET" "$APP_ROOT/current.next"; mv -Tf "$APP_ROOT/current.next" "$APP_ROOT/current"
-if systemctl restart "$SERVICE" && curl -fsS --max-time 5 http://127.0.0.1:8000/api/health >/dev/null; then
+if nginx -t && systemctl reload nginx && systemctl restart "$SERVICE" && curl -fsS --max-time 5 http://127.0.0.1:8000/api/health >/dev/null; then
   echo "ROLLBACK_OK revision=$REVISION"
 else
   ln -sfn "$PREVIOUS" "$APP_ROOT/current.next"; mv -Tf "$APP_ROOT/current.next" "$APP_ROOT/current"
+  nginx -t && systemctl reload nginx || true
   systemctl restart "$SERVICE"
   exit 1
 fi
