@@ -9,6 +9,8 @@ class HealthResponse(BaseModel):
     service: str
     phase: Literal["stable"] = "stable"
     version: str
+    revision: str
+    built_at: str | None = None
     timestamp: datetime
 
 

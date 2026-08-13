@@ -3,6 +3,8 @@ export type ApiHealth = {
   service: string
   phase: string
   version: string
+  revision: string
+  built_at: string | null
   timestamp: string
 }
 

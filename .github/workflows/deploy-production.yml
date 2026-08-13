@@ -1,0 +1,72 @@
+name: Deploy production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: yanpan-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test-build-deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://yanpan.xieyw.top
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: npm ci
+      - run: python -m venv .venv
+      - run: .venv/bin/pip install -r backend/requirements.txt
+      - run: npm run check
+      - name: Build immutable production bundle
+        run: |
+          OUTPUT_DIR="$RUNNER_TEMP/release" bash deploy/package-production.sh "$GITHUB_SHA"
+          echo "ARCHIVE=$RUNNER_TEMP/release/yanpan-$GITHUB_SHA.tar.gz" >> "$GITHUB_ENV"
+      - name: Configure deploy transport
+        env:
+          PROD_SSH_KEY: ${{ secrets.PROD_SSH_KEY }}
+          PROD_KNOWN_HOSTS: ${{ secrets.PROD_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$PROD_SSH_KEY" > ~/.ssh/yanpan_deploy
+          chmod 600 ~/.ssh/yanpan_deploy
+          printf '%s\n' "$PROD_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+      - name: Upload and deploy atomically
+        env:
+          PROD_HOST: ${{ vars.PROD_HOST }}
+          PROD_USER: ${{ vars.PROD_USER }}
+        run: |
+          CHECKSUM="$(cat "$ARCHIVE.sha256")"
+          REMOTE="/home/$PROD_USER/incoming/yanpan-$GITHUB_SHA.tar.gz"
+          scp -i ~/.ssh/yanpan_deploy -o BatchMode=yes "$ARCHIVE" "$PROD_USER@$PROD_HOST:$REMOTE"
+          ssh -i ~/.ssh/yanpan_deploy -o BatchMode=yes "$PROD_USER@$PROD_HOST" \
+            "sudo /usr/local/sbin/deploy-yanpan-release '$REMOTE' '$GITHUB_SHA' '$CHECKSUM'"
+      - name: Verify public production revision
+        run: |
+          for attempt in {1..12}; do
+            BODY="$(curl -fsS --max-time 10 'https://yanpan.xieyw.top/version.json?check='"$GITHUB_SHA" || true)"
+            if printf '%s' "$BODY" | grep -q "\"revision\":\"$GITHUB_SHA\""; then
+              printf 'Production is serving %s\n' "$GITHUB_SHA"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'Public revision verification failed' >&2
+          exit 1

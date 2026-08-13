@@ -58,6 +58,8 @@ async def health() -> HealthResponse:
         service=settings.app_name,
         phase=settings.phase,
         version=settings.version,
+        revision=settings.revision,
+        built_at=settings.built_at,
         timestamp=datetime.now(ZoneInfo("Asia/Shanghai")),
     )
 

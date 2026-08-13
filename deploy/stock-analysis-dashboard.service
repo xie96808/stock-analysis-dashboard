@@ -1,0 +1,23 @@
+[Unit]
+Description=Stock Analysis Dashboard API
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=stockdash
+Group=stockdash
+WorkingDirectory=/srv/yanpan-dashboard/current
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+EnvironmentFile=-/srv/yanpan-dashboard/current/release.env
+ExecStart=/srv/yanpan-dashboard/current/.venv/bin/python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --workers 1
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/srv/yanpan-dashboard/shared/data
+
+[Install]
+WantedBy=multi-user.target

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import os
 from pathlib import Path
 
 
@@ -13,6 +14,8 @@ class Settings:
     host: str = "127.0.0.1"
     port: int = 8000
     data_dir: Path = PROJECT_ROOT / "data"
+    revision: str = os.getenv("APP_GIT_SHA", "development")
+    built_at: str | None = os.getenv("APP_BUILD_TIME")
 
 
 settings = Settings()

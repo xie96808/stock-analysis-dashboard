@@ -28,6 +28,7 @@ def test_health() -> None:
     assert payload["status"] == "ok"
     assert payload["phase"] == "stable"
     assert payload["version"] == "1.0.2"
+    assert payload["revision"]
 
 
 def test_demo_snapshot() -> None:
