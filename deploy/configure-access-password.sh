@@ -7,7 +7,7 @@ DOMAIN="${DOMAIN:-yanpan.xieyw.top}"
 USERNAME="${ACCESS_USERNAME:-yanpan}"
 # Temporary preview credential requested by the product owner. Override with
 # ACCESS_PASSWORD before running this script when rotating the password.
-PASSWORD="${ACCESS_PASSWORD:-123123}"
+PASSWORD="${ACCESS_PASSWORD:-1111}"
 SITE="/etc/nginx/sites-enabled/$DOMAIN"
 AUTH_FILE="/etc/nginx/.htpasswd-yanpan"
 SNIPPET="/etc/nginx/snippets/yanpan-access-password.conf"

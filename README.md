@@ -133,11 +133,11 @@ npm run release:bundle
 生产环境通过 Nginx Basic Auth 在静态页面和 API 之前统一拦截，而不是只在前端显示一个可绕过的弹窗。首次配置：
 
 ```bash
-sudo ACCESS_USERNAME=yanpan ACCESS_PASSWORD=123123 \
+sudo ACCESS_USERNAME=yanpan ACCESS_PASSWORD=1111 \
   bash deploy/configure-access-password.sh
 ```
 
-浏览器会弹出原生登录框。当前临时账号为 `yanpan`、密码为 `123123`；正式分享前应更换密码。只有不含个人数据的 `/version.json` 免登录，用于部署流程核验当前线上版本，其余静态页面和 API 均在 Nginx 层拦截。
+浏览器会弹出原生登录框。当前临时账号为 `yanpan`、密码为 `1111`；正式分享前应更换密码。只有不含个人数据的 `/version.json` 免登录，用于部署流程核验当前线上版本，其余静态页面和 API 均在 Nginx 层拦截。
 
 ### 本地数据与迁移
 
