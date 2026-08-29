@@ -24,4 +24,16 @@ describe('market transforms', () => {
     expect(points[0].average).toBeCloseTo(10.5)
     expect(points[1].average).toBeCloseTo(11)
   })
+
+  it('rejects implausible provider amount so VWAP stays near the print', () => {
+    const points = toIntradayPoints({
+      ...response(),
+      bars: [
+        { time: '2026-08-11 09:30', open: 69, high: 70, low: 68, close: 69.57, volume: 52800, amount: 30392, turnover_rate: null },
+        { time: '2026-08-11 09:35', open: 69, high: 70, low: 68, close: 69.4, volume: 47300, amount: 27227, turnover_rate: null },
+      ],
+    })
+    expect(points[0].average).toBeCloseTo(69.57, 1)
+    expect(points[1].average).toBeGreaterThan(60)
+  })
 })

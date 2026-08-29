@@ -131,6 +131,9 @@ export function IntradayView({ bar, points: suppliedPoints, fontScale, loading =
     chart.panes()[0]?.setHeight(Math.round(host.clientHeight * 0.74))
     chart.panes()[1]?.setHeight(Math.round(host.clientHeight * 0.21))
     chart.timeScale().fitContent()
+    const priceScale = priceSeries.priceScale()
+    priceScale.setAutoScale(false)
+    priceScale.setVisibleRange({ from: priceRange.minValue, to: priceRange.maxValue })
 
     const observer = new ResizeObserver(() => {
       chart.resize(host.clientWidth, host.clientHeight)

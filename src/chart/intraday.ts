@@ -35,10 +35,14 @@ export function intradaySourceLabel(source: IntradaySource) {
 }
 
 export function intradayPriceScaleRange(prices: number[], paddingRatio = 0.12) {
-  const finite = prices.filter((value) => Number.isFinite(value))
+  const finite = prices.filter((value) => Number.isFinite(value) && value > 0)
   if (!finite.length) return { minValue: 0, maxValue: 1 }
-  const min = Math.min(...finite)
-  const max = Math.max(...finite)
+  const ranked = [...finite].sort((a, b) => a - b)
+  const median = ranked[Math.floor(ranked.length / 2)]
+  const clustered = finite.filter((value) => value >= median * 0.2 && value <= median * 5)
+  const used = clustered.length ? clustered : finite
+  const min = Math.min(...used)
+  const max = Math.max(...used)
   const span = Math.max(max - min, Math.max(Math.abs(min), Math.abs(max), 1) * 0.002)
   const padding = span * paddingRatio
   return { minValue: min - padding, maxValue: max + padding }

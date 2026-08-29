@@ -48,3 +48,10 @@ describe('intraday price scale', () => {
     expect(range.minValue).toBeGreaterThan(0)
   })
 })
+
+  it('ignores a near-zero VWAP so the axis stays on the session', () => {
+    const range = intradayPriceScaleRange([64.08, 65.59, 64.95, 0.57])
+    expect(range.minValue).toBeGreaterThan(50)
+    expect(range.maxValue).toBeLessThan(80)
+    expect(range.minValue).toBeLessThan(64.08)
+  })
