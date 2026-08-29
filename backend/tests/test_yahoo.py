@@ -24,6 +24,7 @@ def test_yahoo_symbol_mapping_covers_a_and_h_markets() -> None:
     assert YahooProvider._symbol(normalize_symbol("001280")) == "001280.SZ"
     assert YahooProvider._symbol(normalize_symbol("600000")) == "600000.SS"
     assert YahooProvider._symbol(normalize_symbol("00700.HK")) == "0700.HK"
+    assert YahooProvider._symbol(normalize_symbol("920000")) == "920000.BJ"
 
 
 def test_yahoo_parser_applies_qfq_and_hfq_factors() -> None:

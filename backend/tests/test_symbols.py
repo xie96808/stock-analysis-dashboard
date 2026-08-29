@@ -12,6 +12,10 @@ from backend.app.market_data.symbols import SymbolError, normalize_symbol
         ("00700.HK", "HKEX:00700", "hk00700"),
         ("700", "HKEX:00700", "hk00700"),
         ("bj430047", "BSE:430047", "bj430047"),
+        ("920000", "BSE:920000", "bj920000"),
+        ("920001", "BSE:920001", "bj920001"),
+        ("920992", "BSE:920992", "bj920992"),
+        ("900901", "SSE:900901", "sh900901"),
     ],
 )
 def test_normalize_symbol(raw: str, key: str, provider: str) -> None:
