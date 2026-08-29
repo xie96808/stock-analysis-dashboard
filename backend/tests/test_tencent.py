@@ -1,6 +1,7 @@
 import asyncio
 
 from backend.app.market_data.symbols import normalize_symbol
+from backend.app.market_data.base import ProviderError
 from backend.app.market_data.tencent import TencentProvider
 
 
@@ -97,3 +98,58 @@ def test_hk_minute_request_uses_multi_day_route_and_keeps_sessions() -> None:
         "2026-08-27 09:30", "2026-08-27 13:00",
         "2026-08-28 09:30", "2026-08-28 13:00",
     ]
+
+def test_daily_bars_do_not_silently_relabel_unadjusted_as_qfq() -> None:
+    payload = {
+        "code": 0,
+        "data": {"sz001280": {
+            "day": [["2026-08-28", "10", "11", "12", "9", "100"]],
+            "qt": {"sz001280": ["", "测试标的"]},
+        }},
+    }
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return payload
+
+    class FakeClient:
+        async def get(self, url: str, params: dict[str, str]) -> FakeResponse:
+            return FakeResponse()
+
+    provider = TencentProvider(client=FakeClient())  # type: ignore[arg-type]
+    try:
+        asyncio.run(provider.daily_bars(normalize_symbol("001280"), "qfq", 20))
+        raise AssertionError("expected ProviderError")
+    except ProviderError as error:
+        assert "qfqday" in str(error)
+
+
+def test_daily_bars_use_the_requested_adjustment_series() -> None:
+    payload = {
+        "code": 0,
+        "data": {"sz001280": {
+            "day": [["2026-08-28", "10", "11", "12", "9", "100"]],
+            "qfqday": [["2026-08-28", "5", "5.5", "6", "4.5", "100"]],
+            "qt": {"sz001280": ["", "测试标的"]},
+        }},
+    }
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return payload
+
+    class FakeClient:
+        async def get(self, url: str, params: dict[str, str]) -> FakeResponse:
+            return FakeResponse()
+
+    provider = TencentProvider(client=FakeClient())  # type: ignore[arg-type]
+    bars, name, _ = asyncio.run(provider.daily_bars(normalize_symbol("001280"), "qfq", 20))
+    assert name == "测试标的"
+    assert bars[0].close == 5.5
+    assert bars[0].open == 5.0
