@@ -8,4 +8,4 @@ describe('formatMetricPercent', () => {
     expect(formatMetricPercent(0.4, false)).toBe('40.00%')
     expect(formatMetricPercent(0, false)).toBe('0.00%')
   })
-}
+})

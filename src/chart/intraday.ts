@@ -33,3 +33,13 @@ export function intradaySourceLabel(source: IntradaySource) {
   if (source === 'fixture') return '样例降级'
   return '无5分钟行情'
 }
+
+export function intradayPriceScaleRange(prices: number[], paddingRatio = 0.12) {
+  const finite = prices.filter((value) => Number.isFinite(value))
+  if (!finite.length) return { minValue: 0, maxValue: 1 }
+  const min = Math.min(...finite)
+  const max = Math.max(...finite)
+  const span = Math.max(max - min, Math.max(Math.abs(min), Math.abs(max), 1) * 0.002)
+  const padding = span * paddingRatio
+  return { minValue: min - padding, maxValue: max + padding }
+}

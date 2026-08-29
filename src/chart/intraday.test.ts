@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { intradaySourceLabel, placeIntradayPrompt, resolveIntradaySource, supportsIntraday } from './intraday'
+import { intradayPriceScaleRange, intradaySourceLabel, placeIntradayPrompt, resolveIntradaySource, supportsIntraday } from './intraday'
 
 describe('intraday entry policy', () => {
   it('only enables entry from daily candles', () => {
@@ -30,5 +30,21 @@ describe('intraday source selection', () => {
 
   it('prefers live points over the demo fixture', () => {
     expect(resolveIntradaySource([{ length: 1 } as { length: number }], { allowFixture: true })).toBe('live')
+  })
+})
+
+describe('intraday price scale', () => {
+  it('fits the visible range around prices instead of anchoring at zero', () => {
+    const range = intradayPriceScaleRange([68.4, 70.3, 68.53, 70.14])
+    expect(range.minValue).toBeGreaterThan(60)
+    expect(range.maxValue).toBeLessThan(80)
+    expect(range.minValue).toBeLessThan(68.4)
+    expect(range.maxValue).toBeGreaterThan(70.3)
+  })
+
+  it('still expands a flat series so the line is not glued to the axis', () => {
+    const range = intradayPriceScaleRange([68.53, 68.53])
+    expect(range.maxValue - range.minValue).toBeGreaterThan(0)
+    expect(range.minValue).toBeGreaterThan(0)
   })
 })

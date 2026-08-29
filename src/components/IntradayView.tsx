@@ -11,7 +11,7 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts'
 import { createIntradayFixture, type IntradayPoint, type StockBar } from '../data/fixture'
-import { resolveIntradaySource } from '../chart/intraday'
+import { intradayPriceScaleRange, resolveIntradaySource } from '../chart/intraday'
 
 type Props = {
   bar: StockBar
@@ -92,6 +92,7 @@ export function IntradayView({ bar, points: suppliedPoints, fontScale, loading =
       handleScale: { mouseWheel: true, pinch: true, axisPressedMouseMove: true },
     })
 
+    const priceRange = intradayPriceScaleRange(points.flatMap((point) => [point.price, point.average]))
     const priceSeries = chart.addSeries(AreaSeries, {
       lineColor: '#2962e8',
       lineWidth: 2,
@@ -100,6 +101,7 @@ export function IntradayView({ bar, points: suppliedPoints, fontScale, loading =
       priceLineVisible: false,
       lastValueVisible: true,
       crosshairMarkerRadius: 4,
+      autoscaleInfoProvider: () => ({ priceRange }),
     })
     priceSeries.setData(points.map((point) => ({ time: point.timestamp as UTCTimestamp, value: point.price })))
 
@@ -109,6 +111,7 @@ export function IntradayView({ bar, points: suppliedPoints, fontScale, loading =
       priceLineVisible: false,
       lastValueVisible: false,
       crosshairMarkerVisible: false,
+      autoscaleInfoProvider: () => ({ priceRange }),
     })
     averageSeries.setData(points.map((point) => ({ time: point.timestamp as UTCTimestamp, value: point.average })))
 
