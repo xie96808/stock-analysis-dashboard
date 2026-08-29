@@ -35,12 +35,14 @@ import { BacktestPanel } from './components/BacktestPanel'
 import { AlertPanel } from './components/AlertPanel'
 import { WatchlistPanel } from './components/WatchlistPanel'
 import { PortfolioPanel } from './components/PortfolioPanel'
+import { ProviderPanel } from './components/ProviderPanel'
 import { Icon } from './components/Icon'
 import { IntradayView } from './components/IntradayView'
 import { JournalCalendar } from './components/JournalCalendar'
 import { fixtureBars, type IntradayPoint, type StockBar } from './data/fixture'
 import type { Drawing, DrawingStore } from './drawings/model'
 import { resolveChipAsOfDate } from './distributions/model'
+import { intradaySourceLabel, resolveIntradaySource } from './chart/intraday'
 import { toIntradayPoints, toStockBars } from './market/transform'
 import { marketSessionState } from './market/refreshSchedule'
 import { parseDrawingStore, parseIndicatorConfig, shanghaiDateKey } from './state/preferences'
@@ -77,6 +79,7 @@ const adjustmentLabels: Record<MarketAdjustment, string> = {
 }
 
 type FontScale = 'standard' | 'large' | 'xlarge'
+type WorkspaceNav = 'chart' | 'review' | 'backtest' | 'alerts' | 'watchlist' | 'portfolio' | 'sources'
 type VisibleDistributionMode = Exclude<DistributionMode, 'hidden'>
 
 function savedDistributionMode(): DistributionMode {
@@ -282,6 +285,8 @@ export default function App() {
   const [watchlistOpen, setWatchlistOpen] = useState(false)
   const [watchlist, setWatchlist] = useState<WatchlistItem[]>(() => parseWatchlist(window.localStorage.getItem('dashboard-watchlist-v1')))
   const [portfolioOpen, setPortfolioOpen] = useState(false)
+  const [sourcesOpen, setSourcesOpen] = useState(false)
+  const [workspaceNav, setWorkspaceNav] = useState<WorkspaceNav>('chart')
   const [calendarOpen, setCalendarOpen] = useState(false)
   const [selectedJournalDate, setSelectedJournalDate] = useState(shanghaiDateKey)
   const [selectedDay, setSelectedDay] = useState<StockBar | null>(null)
@@ -346,6 +351,33 @@ export default function App() {
       toastTimerRef.current = null
     }, 2_600)
   }, [])
+
+  const closeWorkspaceOverlays = useCallback(() => {
+    setBacktestOpen(false)
+    setAlertOpen(false)
+    setWatchlistOpen(false)
+    setPortfolioOpen(false)
+    setSourcesOpen(false)
+  }, [])
+
+  const openWorkspace = useCallback((nav: WorkspaceNav) => {
+    closeWorkspaceOverlays()
+    setWorkspaceNav(nav)
+    if (nav === 'review') {
+      setJournalOpen(true)
+      setCalendarOpen(true)
+    }
+    if (nav === 'backtest') setBacktestOpen(true)
+    if (nav === 'alerts') setAlertOpen(true)
+    if (nav === 'watchlist') setWatchlistOpen(true)
+    if (nav === 'portfolio') setPortfolioOpen(true)
+    if (nav === 'sources') setSourcesOpen(true)
+  }, [closeWorkspaceOverlays])
+
+  const closeWorkspaceOverlay = useCallback(() => {
+    closeWorkspaceOverlays()
+    setWorkspaceNav('chart')
+  }, [closeWorkspaceOverlays])
 
   const requestMarketRefresh = useCallback(() => {
     if (marketState === 'loading' || marketRefreshing) return
@@ -766,11 +798,15 @@ export default function App() {
       tradingDate: selectedDay.date.slice(0, 10),
       refresh: forceRefresh,
     }, controller.signal)
-      .then((response) => setIntradayPoints(toIntradayPoints(response)))
+      .then((response) => {
+        const points = toIntradayPoints(response)
+        setIntradayPoints(points)
+        if (!points.length) notify('该日期没有5分钟K线，未使用样例分时代替')
+      })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === 'AbortError') return
         setIntradayPoints([])
-        notify('该日期的5分钟行情不可用，分时面板使用本地拟合预览')
+        notify('该日期的5分钟行情不可用，未使用样例分时代替')
       })
       .finally(() => setIntradayLoading(false))
     return () => controller.abort()
@@ -1285,13 +1321,13 @@ export default function App() {
         </form>
 
         <nav className="header-nav" aria-label="工作区导航">
-          <button className={`nav-item${backtestOpen ? '' : ' is-active'}`} onClick={() => setBacktestOpen(false)}>图表</button>
-          <button className="nav-item" onClick={() => { setJournalOpen(true); notify('研究日志已打开，可按日期查看预测与revision') }}>复盘</button>
-          <button className={`nav-item${backtestOpen ? ' is-active' : ''}`} onClick={() => setBacktestOpen(true)}>回测</button>
-          <button className={`nav-item${alertOpen ? ' is-active' : ''}`} onClick={() => setAlertOpen(true)}>提醒{alertRules.filter((rule) => rule.enabled).length ? ` ${alertRules.filter((rule) => rule.enabled).length}` : ''}</button>
-          <button className={`nav-item${watchlistOpen ? ' is-active' : ''}`} onClick={() => setWatchlistOpen(true)}>自选（{watchlist.length}）</button>
-          <button className={`nav-item${portfolioOpen ? ' is-active' : ''}`} onClick={() => setPortfolioOpen(true)}>模拟</button>
-          <button className="nav-item" title="查看当前行情数据来源" onClick={() => notify(`${displayName} · ${marketMeta.source}${marketMeta.cached ? ' · 缓存命中' : ''}`)}>行情源</button>
+          <button className={`nav-item${workspaceNav === 'chart' ? ' is-active' : ''}`} aria-current={workspaceNav === 'chart' ? 'page' : undefined} onClick={() => openWorkspace('chart')}>图表</button>
+          <button className={`nav-item${workspaceNav === 'review' ? ' is-active' : ''}`} aria-current={workspaceNav === 'review' ? 'page' : undefined} onClick={() => openWorkspace('review')}>复盘</button>
+          <button className={`nav-item${workspaceNav === 'backtest' ? ' is-active' : ''}`} aria-current={workspaceNav === 'backtest' ? 'page' : undefined} onClick={() => openWorkspace('backtest')}>回测</button>
+          <button className={`nav-item${workspaceNav === 'alerts' ? ' is-active' : ''}`} aria-current={workspaceNav === 'alerts' ? 'page' : undefined} onClick={() => openWorkspace('alerts')}>提醒{alertRules.filter((rule) => rule.enabled).length ? ` ${alertRules.filter((rule) => rule.enabled).length}` : ''}</button>
+          <button className={`nav-item${workspaceNav === 'watchlist' ? ' is-active' : ''}`} aria-current={workspaceNav === 'watchlist' ? 'page' : undefined} onClick={() => openWorkspace('watchlist')}>自选（{watchlist.length}）</button>
+          <button className={`nav-item${workspaceNav === 'portfolio' ? ' is-active' : ''}`} aria-current={workspaceNav === 'portfolio' ? 'page' : undefined} onClick={() => openWorkspace('portfolio')}>模拟</button>
+          <button className={`nav-item${workspaceNav === 'sources' ? ' is-active' : ''}`} aria-current={workspaceNav === 'sources' ? 'page' : undefined} title="查看当前行情数据来源" onClick={() => openWorkspace('sources')}>行情源</button>
         </nav>
 
         <div className="header-actions">
@@ -1508,7 +1544,14 @@ export default function App() {
         >
           <i />{marketRefreshing ? '正在获取最新数据' : marketState === 'loading' ? '读取行情' : marketState === 'fallback' ? '样例降级' : marketState === 'error' ? '读取失败' : marketMeta.stale ? '过期缓存 · 注意' : marketMeta.fallbackUsed ? '备用行情源' : `${marketMeta.delayed ? '延时' : '实时'}数据${marketMeta.cached ? ' · 缓存' : ''}`}
         </span>
-        <button className="journal-toggle" onClick={() => setJournalOpen((value) => !value)}>
+        <button className="journal-toggle" onClick={() => {
+          if (journalOpen) {
+            setJournalOpen(false)
+            setWorkspaceNav((nav) => nav === 'review' ? 'chart' : nav)
+          } else {
+            setJournalOpen(true)
+          }
+        }}>
           <Icon name="journal" />
           研究记录
         </button>
@@ -1598,7 +1641,7 @@ export default function App() {
               {!selectedDay && <span>{adjustmentLabel}</span>}
               {!selectedDay && <span className={logPrice ? 'log-badge is-log' : 'log-badge'}>{percentPrice ? '%' : logPrice ? 'LOG' : '线性'}</span>}
               {historicalCutoff && <button className="historical-badge" onClick={() => setHistoricalCutoff(null)}>当日视角 · 截止{historicalCutoff} ×</button>}
-              {selectedDay && <span className="intraday-source">{intradayLoading ? '正在加载5分钟行情' : intradayPoints.length ? '真实5分钟行情' : '本地拟合预览'}</span>}
+              {selectedDay && <span className="intraday-source">{intradaySourceLabel(resolveIntradaySource(intradayPoints, { loading: intradayLoading, allowFixture: marketState === 'fallback' }))}</span>}
             </div>
             <div className="chart-context-actions">
               {selectedDay ? (
@@ -1607,7 +1650,7 @@ export default function App() {
             </div>
           </div>
           {selectedDay ? (
-            <IntradayView bar={selectedDay} points={intradayPoints} fontScale={fontScale} />
+            <IntradayView bar={selectedDay} points={intradayPoints} fontScale={fontScale} loading={intradayLoading} allowFixture={marketState === 'fallback'} />
           ) : (
             <ChartWorkbench
               bars={chartBars}
@@ -1651,13 +1694,16 @@ export default function App() {
         </section>
 
         {journalOpen && (
-          <aside className="journal-panel">
+          <aside className={`journal-panel${workspaceNav === 'review' ? ' is-review-workspace' : ''}`} aria-label="复盘工作区">
             <div className="journal-header">
               <div>
-                <span className="eyebrow">研究日志</span>
+                <span className="eyebrow">{workspaceNav === 'review' ? '复盘工作区' : '研究日志'}</span>
                 <h2>{journalDateLabel}</h2>
               </div>
-              <button className="icon-button" title="收起" onClick={() => setJournalOpen(false)}><Icon name="collapse" /></button>
+              <button className="icon-button" title="收起" onClick={() => {
+                setJournalOpen(false)
+                setWorkspaceNav((nav) => nav === 'review' ? 'chart' : nav)
+              }}><Icon name="collapse" /></button>
             </div>
 
             <div className="journal-summary">
@@ -1758,7 +1804,7 @@ export default function App() {
         symbol={instrument.symbol}
         name={displayName}
         market={instrument.market}
-        onClose={() => setBacktestOpen(false)}
+        onClose={closeWorkspaceOverlay}
         onMessage={notify}
       />}
 
@@ -1770,7 +1816,7 @@ export default function App() {
         events={alertEvents}
         onRulesChange={setAlertRules}
         onClearEvents={() => setAlertEvents((current) => current.filter((event) => event.symbol !== instrument.symbol))}
-        onClose={() => setAlertOpen(false)}
+        onClose={closeWorkspaceOverlay}
         onMessage={notify}
       />}
 
@@ -1779,7 +1825,7 @@ export default function App() {
         items={watchlist}
         onChange={setWatchlist}
         onSelect={selectWatchlistItem}
-        onClose={() => setWatchlistOpen(false)}
+        onClose={closeWorkspaceOverlay}
         onMessage={notify}
       />}
 
@@ -1788,7 +1834,22 @@ export default function App() {
         name={displayName}
         market={instrument.market}
         currentPrice={latestPrice}
-        onClose={() => setPortfolioOpen(false)}
+        onClose={closeWorkspaceOverlay}
+        onMessage={notify}
+      />}
+
+      {sourcesOpen && <ProviderPanel
+        symbol={instrument.symbol}
+        name={displayName}
+        source={marketMeta.source}
+        cached={marketMeta.cached}
+        delayed={marketMeta.delayed}
+        stale={marketMeta.stale}
+        fallbackUsed={marketMeta.fallbackUsed}
+        freshnessSeconds={marketMeta.freshnessSeconds}
+        qualityIssues={marketMeta.qualityIssues}
+        providerChain={marketMeta.providerChain}
+        onClose={closeWorkspaceOverlay}
         onMessage={notify}
       />}
 

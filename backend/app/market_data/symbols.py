@@ -30,10 +30,12 @@ def _cn_instrument(code: str, prefix: str | None = None) -> Instrument:
 
     inferred = prefix
     if inferred is None:
-        if code.startswith(("5", "6", "9")):
-            inferred = "sh"
-        elif code.startswith(("4", "8")) or code.startswith("92"):
+        # 92xxxx is Beijing Stock Exchange. Check it before the SSE "9" prefix
+        # (900xxx B-shares), otherwise 北交所 codes are silently sent to Shanghai.
+        if code.startswith(("4", "8")) or code.startswith("92"):
             inferred = "bj"
+        elif code.startswith(("5", "6", "9")):
+            inferred = "sh"
         else:
             inferred = "sz"
 

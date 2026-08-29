@@ -28,7 +28,7 @@ import { extendedChipPanelHeight } from '../chips/panelPosition'
 import { resolveChipOverlayGeometry } from '../chips/geometry'
 import { barsInVisibleTimeRange } from '../profile/visibleRange'
 import { preservePriceModeViewport } from '../chart/priceModeViewport'
-import { futureProjectionBarCount } from '../chart/projection'
+import { createFutureProjectionDates, futureProjectionBarCount } from '../chart/projection'
 
 export type { DistributionMode } from '../distributions/model'
 export type ProfileLayout = 'overlay' | 'dock'
@@ -127,17 +127,6 @@ function formatTime(time: Time) {
   }
   if (typeof time === 'string') return time
   return `${time.year}-${String(time.month).padStart(2, '0')}-${String(time.day).padStart(2, '0')}`
-}
-
-function createFutureTradingDates(after: string, count = 270) {
-  const cursor = new Date(`${after.slice(0, 10)}T00:00:00Z`)
-  const values: string[] = []
-  while (values.length < count) {
-    cursor.setUTCDate(cursor.getUTCDate() + 1)
-    const weekday = cursor.getUTCDay()
-    if (weekday !== 0 && weekday !== 6) values.push(cursor.toISOString().slice(0, 10))
-  }
-  return values
 }
 
 function formatVolume(value: number) {
@@ -343,8 +332,8 @@ export function ChartWorkbench({
     // 1.1px) and push all real candles off-screen after fitContent(). Scale the
     // projection area with the actual chart width so the latest history and a
     // useful drawing runway are both visible.
-    const futureBarCount = futureProjectionBarCount(host.clientWidth)
-    const futureDates = !isMinute && latestBar ? createFutureTradingDates(latestBar.date, futureBarCount) : []
+    const futureBarCount = futureProjectionBarCount(host.clientWidth, bars.length)
+    const futureDates = !isMinute && latestBar ? createFutureProjectionDates(latestBar.date, futureBarCount, timeframe) : []
     candleData.push(...futureDates.map((date) => ({ time: businessDay(date) })))
     candleSeries.setData(candleData)
 

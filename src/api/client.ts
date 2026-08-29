@@ -234,23 +234,58 @@ export type DemoSnapshot = {
   note: string
 }
 
+export function formatApiDetail(detail: unknown): string {
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail.map((item) => {
+      if (typeof item === 'string') return item
+      if (item && typeof item === 'object' && 'msg' in item) {
+        const loc = Array.isArray((item as { loc?: unknown }).loc)
+          ? (item as { loc: unknown[] }).loc.filter((part) => part !== 'body').join('.')
+          : ''
+        const msg = String((item as { msg: unknown }).msg)
+        return loc ? `${loc}: ${msg}` : msg
+      }
+      return ''
+    }).filter(Boolean).join('; ')
+  }
+  return ''
+}
+
+async function readResponseBody(response: Response): Promise<unknown> {
+  if (typeof response.text === 'function') {
+    try {
+      const raw = await response.text()
+      if (!raw.trim()) return undefined
+      return JSON.parse(raw) as unknown
+    } catch {
+      return undefined
+    }
+  }
+  try {
+    return await response.json() as unknown
+  } catch {
+    return undefined
+  }
+}
+
 async function requestJson<T>(path: string, signal?: AbortSignal, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
     headers: { Accept: 'application/json', 'Content-Type': 'application/json', ...init?.headers },
     signal,
   })
+  const payload = await readResponseBody(response)
   if (!response.ok) {
-    let detail = ''
-    try {
-      const payload = await response.json() as { detail?: unknown }
-      if (typeof payload.detail === 'string') detail = payload.detail
-    } catch {
-      // Preserve the status fallback when the server does not return JSON.
-    }
+    const detail = payload && typeof payload === 'object' && payload !== null && 'detail' in payload
+      ? formatApiDetail((payload as { detail: unknown }).detail)
+      : ''
     throw new Error(detail || `API ${response.status}: ${path}`)
   }
-  return response.json() as Promise<T>
+  if (payload === undefined) {
+    throw new Error(`API ${response.status}: empty response from ${path}`)
+  }
+  return payload as T
 }
 
 type CachedMarketResponse<T> = { savedAt: number; value: T }

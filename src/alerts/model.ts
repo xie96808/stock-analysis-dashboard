@@ -70,8 +70,8 @@ function volumeRatio(bars: StockBar[]) {
 
 function condition(rule: AlertRule, bars: StockBar[], price: number) {
   const threshold = rule.threshold ?? 0
-  if (rule.type === 'price_above') return price >= threshold
-  if (rule.type === 'price_below') return price <= threshold
+  if (rule.type === 'price_above') return price > threshold
+  if (rule.type === 'price_below') return price < threshold
   if (rule.type === 'volume_ratio') return volumeRatio(bars) >= threshold
   const macd = macdState(bars)
   return rule.type === 'macd_bullish' ? macd.bullishCross : macd.bearishCross

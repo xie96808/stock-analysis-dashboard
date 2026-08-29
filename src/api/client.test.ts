@@ -67,6 +67,26 @@ describe('market API client', () => {
     })).rejects.toThrow('模拟账户可用资金不足')
   })
 
+  it('flattens FastAPI validation arrays instead of showing an empty error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 422,
+      json: async () => ({ detail: [{ loc: ['body', 'symbol'], msg: 'Field required' }] }),
+    }))
+    await expect(createPaperTrade({
+      symbol: '001280', name: '样例股票', market: 'CN', side: 'buy', price: 10, quantity: 100,
+    })).rejects.toThrow('symbol: Field required')
+  })
+
+  it('rejects an empty 200 JSON body instead of throwing a raw parse error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      text: async () => '',
+    }))
+    await expect(getMarketQuote('001280')).rejects.toThrow('empty response')
+  })
+
   it('encodes Chinese instrument search and caps the requested suggestion count', async () => {
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => [] })
     vi.stubGlobal('fetch', fetchMock)

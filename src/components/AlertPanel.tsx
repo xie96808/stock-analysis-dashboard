@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useEscapeToClose } from '../ui/useEscapeToClose'
 import { alertTypeLabels, type AlertEvent, type AlertRule, type AlertType } from '../alerts/model'
 import { Icon } from './Icon'
 
@@ -25,6 +26,7 @@ export function AlertPanel({ symbol, name, price, rules, events, onRulesChange, 
   const [threshold, setThreshold] = useState(price.toFixed(2))
   const currentRules = useMemo(() => rules.filter((rule) => rule.symbol === symbol), [rules, symbol])
   const currentEvents = useMemo(() => events.filter((event) => event.symbol === symbol), [events, symbol])
+  useEscapeToClose(onClose)
 
   const addRule = () => {
     const numeric = Number(threshold)

@@ -34,6 +34,12 @@ describe('alert evaluation', () => {
     expect(evaluateAlerts([rule({ type: 'volume_ratio', threshold: 3 })], bars, 14).events).toHaveLength(1)
   })
 
+  it('requires a strict price cross rather than an exact touch', () => {
+    expect(evaluateAlerts([rule({ type: 'price_above', threshold: 14 })], bars, 14).events).toHaveLength(0)
+    expect(evaluateAlerts([rule({ type: 'price_below', threshold: 14 })], bars, 14).events).toHaveLength(0)
+    expect(evaluateAlerts([rule({ type: 'price_above', threshold: 14 })], bars, 14.01).events).toHaveLength(1)
+  })
+
   it('ignores disabled rules and malformed persisted state', () => {
     expect(evaluateAlerts([rule({ enabled: false })], bars, 20).events).toHaveLength(0)
     expect(parseAlertRules('{bad json')).toEqual([])

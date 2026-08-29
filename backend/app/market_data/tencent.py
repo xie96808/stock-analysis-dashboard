@@ -150,7 +150,9 @@ class TencentProvider:
         if not node:
             raise ProviderError(f"No daily data for {instrument.provider_symbol}")
         preferred_key = {"none": "day", "qfq": "qfqday", "hfq": "hfqday"}[adjustment]
-        rows = node.get(preferred_key) or node.get("day") or node.get("qfqday") or []
+        rows = node.get(preferred_key) or []
+        if not rows:
+            raise ProviderError(f"No {preferred_key} data for {instrument.provider_symbol}")
         multiplier = self._volume_multiplier(instrument)
         circulating_shares = self._circulating_shares(node, instrument.provider_symbol) if instrument.market == "CN" else None
         bars = [
@@ -254,10 +256,6 @@ class TencentProvider:
         timeframe: Timeframe,
         limit: int,
     ) -> tuple[list[BarPayload], str | None, dict[str, Any]]:
-        # Tencent's minute/query route returns only the latest session.  The
-        # day/query route exposes the recent five sessions, which is essential
-        # for 30/60-minute charts where one session otherwise becomes only a
-        # handful of candles.
         payload = await self._get(self.multi_day_minute_url, {"code": instrument.provider_symbol})
         node = payload.get("data", {}).get(instrument.provider_symbol)
         if not node:

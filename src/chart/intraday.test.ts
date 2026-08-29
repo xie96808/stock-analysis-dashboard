@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { placeIntradayPrompt, supportsIntraday } from './intraday'
+import { intradayPriceScaleRange, intradaySourceLabel, placeIntradayPrompt, resolveIntradaySource, supportsIntraday } from './intraday'
 
 describe('intraday entry policy', () => {
   it('only enables entry from daily candles', () => {
@@ -16,3 +16,42 @@ describe('intraday entry policy', () => {
     expect(placeIntradayPrompt({ x: -20, y: -20 }, { width: 900, height: 600 })).toEqual({ x: 10, y: 10 })
   })
 })
+
+describe('intraday source selection', () => {
+  it('does not invent prices when live 5-minute bars are missing', () => {
+    expect(resolveIntradaySource([], { loading: false, allowFixture: false })).toBe('unavailable')
+    expect(intradaySourceLabel('unavailable')).toBe('无5分钟行情')
+  })
+
+  it('uses the labeled fixture only when the dashboard is already in sample fallback', () => {
+    expect(resolveIntradaySource([], { allowFixture: true })).toBe('fixture')
+    expect(intradaySourceLabel('fixture')).toBe('样例降级')
+  })
+
+  it('prefers live points over the demo fixture', () => {
+    expect(resolveIntradaySource([{ length: 1 } as { length: number }], { allowFixture: true })).toBe('live')
+  })
+})
+
+describe('intraday price scale', () => {
+  it('fits the visible range around prices instead of anchoring at zero', () => {
+    const range = intradayPriceScaleRange([68.4, 70.3, 68.53, 70.14])
+    expect(range.minValue).toBeGreaterThan(60)
+    expect(range.maxValue).toBeLessThan(80)
+    expect(range.minValue).toBeLessThan(68.4)
+    expect(range.maxValue).toBeGreaterThan(70.3)
+  })
+
+  it('still expands a flat series so the line is not glued to the axis', () => {
+    const range = intradayPriceScaleRange([68.53, 68.53])
+    expect(range.maxValue - range.minValue).toBeGreaterThan(0)
+    expect(range.minValue).toBeGreaterThan(0)
+  })
+})
+
+  it('ignores a near-zero VWAP so the axis stays on the session', () => {
+    const range = intradayPriceScaleRange([64.08, 65.59, 64.95, 0.57])
+    expect(range.minValue).toBeGreaterThan(50)
+    expect(range.maxValue).toBeLessThan(80)
+    expect(range.minValue).toBeLessThan(64.08)
+  })

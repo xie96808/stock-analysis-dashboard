@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useEscapeToClose } from '../ui/useEscapeToClose'
 import { nextPendingItem, updateReviewStatus, type ReviewStatus, type WatchlistItem } from '../watchlist/model'
 
 type Props = {
@@ -16,6 +17,7 @@ export function WatchlistPanel({ currentKey, items, onChange, onSelect, onClose,
   const [filter, setFilter] = useState<'all' | ReviewStatus>('all')
   const filtered = useMemo(() => filter === 'all' ? items : items.filter((item) => item.status === filter), [filter, items])
   const pendingCount = items.filter((item) => item.status === 'pending').length
+  useEscapeToClose(onClose)
 
   const next = () => {
     const item = nextPendingItem(items, currentKey)

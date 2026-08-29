@@ -94,3 +94,22 @@ def test_project_import_rejects_path_traversal_before_writing(tmp_path: Path) ->
         target.import_project(archive_path)
 
     assert not (tmp_path / "escape.txt").exists()
+
+def test_project_import_rejects_journal_file_checksum_mismatch(tmp_path: Path) -> None:
+    source = JournalRepository(tmp_path / "source")
+    source.initialize()
+    source.create(create_payload())
+    original = source.export_project()
+    tampered = tmp_path / "tampered.zip"
+    with zipfile.ZipFile(original) as src, zipfile.ZipFile(tampered, "w") as dst:
+        replaced = False
+        for info in src.infolist():
+            payload = b"tampered-screenshot" if info.filename.endswith("chart.png") else src.read(info)
+            replaced = replaced or info.filename.endswith("chart.png")
+            dst.writestr(info.filename, payload)
+        assert replaced
+
+    target = JournalRepository(tmp_path / "target")
+    target.initialize()
+    with pytest.raises(ValueError, match="checksum"):
+        target.import_project(tampered)
