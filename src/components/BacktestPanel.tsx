@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { useEscapeToClose } from '../ui/useEscapeToClose'
 import { runBacktest, type BacktestResult, type BacktestStrategy } from '../api/client'
 import { Icon } from './Icon'
 
@@ -16,8 +17,8 @@ const strategyLabels: Record<BacktestStrategy, string> = {
   macd: 'MACD交叉',
 }
 
-function percent(value: number) {
-  return `${value >= 0 ? '+' : ''}${(value * 100).toFixed(2)}%`
+export function formatMetricPercent(value: number, signed = true) {
+  return `${signed && value >= 0 ? '+' : ''}${(value * 100).toFixed(2)}%`
 }
 
 function money(value: number) {
@@ -34,6 +35,7 @@ export function BacktestPanel({ symbol, name, market, onClose, onMessage }: Prop
   const [endDate, setEndDate] = useState('')
   const [running, setRunning] = useState(false)
   const [result, setResult] = useState<BacktestResult | null>(null)
+  useEscapeToClose(onClose)
 
   const chartPoints = useMemo(() => {
     if (!result?.equity_curve.length) return ''
@@ -104,11 +106,11 @@ export function BacktestPanel({ symbol, name, market, onClose, onMessage }: Prop
             {!result ? <div className="backtest-empty"><Icon name="chart" /><strong>设置策略后运行回测</strong><span>结果会展示资金曲线、风险收益和逐笔成交。</span></div> : <>
               <div className="backtest-result-heading"><div><strong>{strategyLabels[result.strategy]}</strong><span>{result.start_date} — {result.end_date}</span></div><span>{result.data_source}</span></div>
               <div className="backtest-metrics">
-                <div><span>总收益</span><strong className={result.metrics.total_return >= 0 ? 'is-positive' : 'is-negative'}>{percent(result.metrics.total_return)}</strong></div>
-                <div><span>年化收益</span><strong>{percent(result.metrics.annualized_return)}</strong></div>
-                <div><span>最大回撤</span><strong className="is-negative">{percent(result.metrics.max_drawdown)}</strong></div>
+                <div><span>总收益</span><strong className={result.metrics.total_return >= 0 ? 'is-positive' : 'is-negative'}>{formatMetricPercent(result.metrics.total_return)}</strong></div>
+                <div><span>年化收益</span><strong>{formatMetricPercent(result.metrics.annualized_return)}</strong></div>
+                <div><span>最大回撤</span><strong className="is-negative">{formatMetricPercent(result.metrics.max_drawdown)}</strong></div>
                 <div><span>夏普</span><strong>{result.metrics.sharpe_ratio.toFixed(2)}</strong></div>
-                <div><span>胜率</span><strong>{percent(result.metrics.win_rate)}</strong></div>
+                <div><span>胜率</span><strong>{formatMetricPercent(result.metrics.win_rate, false)}</strong></div>
                 <div><span>期末资产</span><strong>¥{money(result.metrics.ending_equity)}</strong></div>
               </div>
               <div className="backtest-curve"><svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-label="回测资金曲线"><polyline points={chartPoints} /></svg><span>策略资金曲线</span></div>

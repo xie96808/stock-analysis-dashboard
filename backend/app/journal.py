@@ -273,18 +273,25 @@ class JournalRepository:
         records_payload = json.dumps(records, ensure_ascii=False, indent=2).encode()
         timestamp = datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d-%H%M%S")
         target = self.export_dir / f"stock-dashboard-{timestamp}.zip"
+        checksums = {"records.json": self._sha256(records_payload)}
+        journal_entries: list[tuple[str, bytes]] = []
+        for file in self.journal_dir.rglob("*"):
+            if file.is_file():
+                name = (Path("journal") / file.relative_to(self.journal_dir)).as_posix()
+                payload = file.read_bytes()
+                journal_entries.append((name, payload))
+                checksums[name] = self._sha256(payload)
         manifest = {
             "schemaVersion": self.schema_version,
             "exportedAt": self._now(),
             "recordCount": len(records),
-            "checksums": {"records.json": self._sha256(records_payload)},
+            "checksums": checksums,
         }
         with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
             archive.writestr("records.json", records_payload)
             archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
-            for file in self.journal_dir.rglob("*"):
-                if file.is_file():
-                    archive.write(file, Path("journal") / file.relative_to(self.journal_dir))
+            for name, payload in journal_entries:
+                archive.writestr(name, payload)
         return target
 
     def import_project(self, path: Path) -> dict[str, int]:
@@ -295,7 +302,8 @@ class JournalRepository:
             if manifest.get("schemaVersion") != self.schema_version:
                 raise ValueError("Unsupported journal export schema")
             records_payload = archive.read("records.json")
-            if self._sha256(records_payload) != manifest["checksums"]["records.json"]:
+            checksums = manifest.get("checksums") or {}
+            if checksums.get("records.json") != self._sha256(records_payload):
                 raise ValueError("Export checksum mismatch")
             records = json.loads(records_payload)
             journal_files: list[tuple[zipfile.ZipInfo, Path]] = []
@@ -336,8 +344,12 @@ class JournalRepository:
                         )
                         imported_revisions += cursor.rowcount
             for item, target in journal_files:
+                payload = archive.read(item)
+                expected = checksums.get(item.filename)
+                if expected is not None and expected != self._sha256(payload):
+                    raise ValueError("Export checksum mismatch")
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(archive.read(item))
+                target.write_bytes(payload)
         return {"records": imported_records, "revisions": imported_revisions}
 
     def ensure_daily_backup(self) -> Path:

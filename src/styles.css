@@ -1245,6 +1245,42 @@ button {
   pointer-events: none;
 }
 
+.intraday-empty {
+  position: absolute;
+  inset: 42px 12px 36px;
+  z-index: 3;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.intraday-empty strong {
+  color: var(--text);
+  font-size: 16px;
+}
+
+.intraday-empty span {
+  font-size: 12px;
+}
+
+.intraday-fixture-banner {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 5;
+  padding: 4px 8px;
+  border: 1px solid #e8c27a;
+  border-radius: 4px;
+  background: #fff6e5;
+  color: #8a5a12;
+  font-size: 11px;
+  font-weight: 680;
+  pointer-events: none;
+}
+
 .chart-canvas {
   position: absolute;
   inset: 0;
@@ -2091,6 +2127,11 @@ button {
   background: #fafbfc;
   box-shadow: -8px 0 28px rgba(24, 29, 39, 0.025);
   z-index: 7;
+}
+
+.journal-panel.is-review-workspace {
+  border-left-color: #9fb2ea;
+  box-shadow: -10px 0 32px rgba(47, 84, 196, 0.08);
 }
 
 .journal-header {
@@ -3096,8 +3137,50 @@ button {
 .paper-trade-side.is-sell { background: #edf9f5; color: #238569; }
 .paper-trades article > div { min-width: 0; flex: 1; display: grid; gap: 3px; }
 .paper-trades article span { color: var(--muted); font-size: 11px; }
-.paper-trades article button { color: var(--muted); font-size: 11px; }
+.paper-trades article button.paper-trade-delete {
+  flex: 0 0 auto;
+  min-width: 72px;
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: #fff;
+  color: #b54759;
+  font-size: 12px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.paper-trades article button.paper-trade-delete.is-confirming {
+  background: #cf4d61;
+  border-color: #cf4d61;
+  color: #fff;
+}
 .portfolio-empty { min-height: 90px; display: grid; place-content: center; color: var(--muted); font-size: 12px; }
+
+.provider-backdrop { position: fixed; inset: 0; z-index: 88; display: grid; place-items: center; padding: 28px; background: rgba(20, 25, 34, 0.32); backdrop-filter: blur(4px); }
+.provider-dialog { width: min(720px, 94vw); max-height: min(680px, 90vh); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 14px; background: #fff; box-shadow: 0 24px 70px rgba(25, 31, 42, 0.22); }
+.provider-dialog > header { min-height: 88px; display: flex; align-items: center; justify-content: space-between; padding: 18px 24px; border-bottom: 1px solid var(--line); }
+.provider-dialog h2 { margin: 2px 0; font-size: 22px; }
+.provider-dialog header p { margin: 0; color: var(--muted); font-size: 12px; }
+.provider-dialog header > button { width: 36px; height: 36px; border-radius: 8px; font-size: 24px; }
+.provider-current { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; padding: 14px 20px; border-bottom: 1px solid var(--line); background: #f8f9fb; }
+.provider-current > div { display: grid; gap: 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.provider-current span { color: var(--muted); font-size: 11px; }
+.provider-current strong { font-size: 14px; line-height: 1.4; word-break: break-all; }
+.provider-issues { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 20px; border-bottom: 1px solid var(--line); }
+.provider-issues span { padding: 4px 8px; border-radius: 999px; background: #fff3e8; color: #b15b2a; font-size: 11px; }
+.provider-list { min-height: 0; flex: 1; display: grid; align-content: start; gap: 8px; padding: 16px 20px; overflow: auto; }
+.provider-list article { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fbfcfd; }
+.provider-list article.is-healthy { border-color: #b7e0d0; background: #f4fbf8; }
+.provider-list article.is-unhealthy { border-color: #f0c2c8; background: #fff7f8; }
+.provider-list article strong { font-size: 14px; }
+.provider-list article span, .provider-list article small { display: block; color: var(--muted); font-size: 11px; }
+.provider-pill { display: inline-flex !important; margin-top: 2px; padding: 2px 8px; border-radius: 999px; font-weight: 700; }
+.provider-list article.is-healthy .provider-pill { background: #d8f3e8; color: #1f7a5c; }
+.provider-list article.is-unhealthy .provider-pill { background: #fde0e4; color: #c13b4e; }
+.provider-error { color: #c13b4e !important; margin-top: 4px; }
+.provider-empty { min-height: 120px; display: grid; place-content: center; color: var(--muted); font-size: 13px; }
+.provider-dialog > footer { padding: 12px 22px; border-top: 1px solid var(--line); color: var(--muted); font-size: 11px; }
 
 @media (max-width: 850px) {
   .portfolio-backdrop { padding: 10px; }

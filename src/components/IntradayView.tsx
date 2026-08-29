@@ -11,11 +11,14 @@ import {
   type UTCTimestamp,
 } from 'lightweight-charts'
 import { createIntradayFixture, type IntradayPoint, type StockBar } from '../data/fixture'
+import { resolveIntradaySource } from '../chart/intraday'
 
 type Props = {
   bar: StockBar
   points?: IntradayPoint[]
   fontScale: 'standard' | 'large' | 'xlarge'
+  loading?: boolean
+  allowFixture?: boolean
 }
 
 function formatShanghaiTime(time: Time) {
@@ -28,16 +31,17 @@ function formatShanghaiTime(time: Time) {
   }).format(new Date(time * 1000))
 }
 
-export function IntradayView({ bar, points: suppliedPoints, fontScale }: Props) {
+export function IntradayView({ bar, points: suppliedPoints, fontScale, loading = false, allowFixture = false }: Props) {
   const hostRef = useRef<HTMLDivElement>(null)
+  const source = resolveIntradaySource(suppliedPoints, { loading, allowFixture })
   const points = useMemo(
-    () => suppliedPoints?.length ? suppliedPoints : createIntradayFixture(bar),
-    [bar, suppliedPoints],
+    () => suppliedPoints?.length ? suppliedPoints : source === 'fixture' ? createIntradayFixture(bar) : [],
+    [bar, source, suppliedPoints],
   )
 
   useEffect(() => {
     const host = hostRef.current
-    if (!host) return
+    if (!host || !points.length) return
 
     const chartFontSize = fontScale === 'standard' ? 15 : fontScale === 'large' ? 16 : 18
     const priceScaleWidth = fontScale === 'xlarge' ? 92 : fontScale === 'large' ? 84 : 78
@@ -150,6 +154,13 @@ export function IntradayView({ bar, points: suppliedPoints, fontScale }: Props) 
         <span>收 {bar.close.toFixed(2)}</span>
       </div>
       <div ref={hostRef} className="intraday-canvas" />
+      {!points.length && (
+        <div className="intraday-empty">
+          <strong>{loading ? '正在加载5分钟行情' : '该交易日没有可用的5分钟行情'}</strong>
+          <span>未使用样例分时代替真实价格</span>
+        </div>
+      )}
+      {source === 'fixture' && <div className="intraday-fixture-banner">样例降级 · 本地拟合预览，不是真实行情</div>}
       <div className="intraday-tip">拖动或滚轮缩放 · 使用顶部“返回日K”回到日线</div>
     </div>
   )
