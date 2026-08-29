@@ -91,3 +91,20 @@ def test_minute_aggregation_resets_across_lunch_break() -> None:
     assert result[0].time.endswith("11:29")
     assert result[1].time.endswith("13:01")
     assert result[1].volume == 29
+
+
+def test_sixty_minute_aggregation_never_combines_morning_and_afternoon() -> None:
+    source = [
+        BarPayload(time="2026-08-28 11:30", open=45, high=46, low=44.8, close=45.5, volume=100),
+        BarPayload(time="2026-08-28 12:00", open=45.5, high=45.8, low=45.2, close=45.4, volume=120),
+        BarPayload(time="2026-08-28 13:00", open=45.1, high=45.2, low=44.9, close=45, volume=140),
+        BarPayload(time="2026-08-28 13:29", open=45, high=45.4, low=44.9, close=45.3, volume=160),
+    ]
+
+    result = aggregate_minute_bars(source, 60)
+
+    assert len(result) == 2
+    assert result[0].time.endswith("12:00")
+    assert result[0].volume == 220
+    assert result[1].time.endswith("13:29")
+    assert result[1].volume == 300

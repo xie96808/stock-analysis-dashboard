@@ -15,7 +15,7 @@ class TencentProvider:
     name = "tencent-public"
     daily_url = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
     minute_url = "https://ifzq.gtimg.cn/appstock/app/kline/mkline"
-    latest_minute_url = "https://web.ifzq.gtimg.cn/appstock/app/minute/query"
+    multi_day_minute_url = "https://web.ifzq.gtimg.cn/appstock/app/day/query"
     search_url = "https://smartbox.gtimg.cn/s3/"
 
     def __init__(self, timeout_seconds: float = 7.0, client: httpx.AsyncClient | None = None):
@@ -177,7 +177,7 @@ class TencentProvider:
         if timeframe not in {"1m", "5m", "15m", "30m", "60m"}:
             raise ProviderError(f"Unsupported minute timeframe: {timeframe}")
         if instrument.market == "HK":
-            return await self._latest_hk_minute_bars(instrument, timeframe)
+            return await self._hk_minute_bars(instrument, timeframe, limit)
         provider_timeframe = timeframe.replace("m", "")
         key = f"m{provider_timeframe}"
         payload = await self._get(
@@ -204,51 +204,70 @@ class TencentProvider:
         ]
         return bars, self._instrument_name(node, instrument.provider_symbol), node
 
-    async def _latest_hk_minute_bars(
+    @staticmethod
+    def _parse_hk_minute_sessions(node: dict[str, Any]) -> list[BarPayload]:
+        raw_sessions = node.get("data", [])
+        sessions = [raw_sessions] if isinstance(raw_sessions, dict) else raw_sessions
+        minute_bars: list[BarPayload] = []
+        for data_node in sessions:
+            if not isinstance(data_node, dict):
+                continue
+            trading_date = str(data_node.get("date", ""))
+            rows = data_node.get("data", [])
+            if len(trading_date) != 8 or not rows:
+                continue
+
+            date_text = f"{trading_date[0:4]}-{trading_date[4:6]}-{trading_date[6:8]}"
+            previous_volume = 0.0
+            previous_amount = 0.0
+            for row in rows:
+                parts = str(row).split()
+                if len(parts) < 4:
+                    continue
+                clock, price_text, cumulative_volume_text, cumulative_amount_text = parts[:4]
+                try:
+                    price = float(price_text)
+                    cumulative_volume = float(cumulative_volume_text)
+                    cumulative_amount = float(cumulative_amount_text)
+                except ValueError:
+                    continue
+                volume = max(0.0, cumulative_volume - previous_volume)
+                amount = max(0.0, cumulative_amount - previous_amount)
+                previous_volume = cumulative_volume
+                previous_amount = cumulative_amount
+                minute_bars.append(
+                    BarPayload(
+                        time=f"{date_text} {clock[:2]}:{clock[2:4]}",
+                        open=price,
+                        high=price,
+                        low=price,
+                        close=price,
+                        volume=volume,
+                        amount=amount,
+                    )
+                )
+        return sorted(minute_bars, key=lambda bar: bar.time)
+
+    async def _hk_minute_bars(
         self,
         instrument: Instrument,
         timeframe: Timeframe,
+        limit: int,
     ) -> tuple[list[BarPayload], str | None, dict[str, Any]]:
-        payload = await self._get(self.latest_minute_url, {"code": instrument.provider_symbol})
+        # Tencent's minute/query route returns only the latest session.  The
+        # day/query route exposes the recent five sessions, which is essential
+        # for 30/60-minute charts where one session otherwise becomes only a
+        # handful of candles.
+        payload = await self._get(self.multi_day_minute_url, {"code": instrument.provider_symbol})
         node = payload.get("data", {}).get(instrument.provider_symbol)
         if not node:
             raise ProviderError(f"No minute data for {instrument.provider_symbol}")
-        data_node = node.get("data", {})
-        trading_date = str(data_node.get("date", ""))
-        rows = data_node.get("data", [])
-        if len(trading_date) != 8 or not rows:
-            raise ProviderError(f"No latest-session minute data for {instrument.provider_symbol}")
-
-        date_text = f"{trading_date[0:4]}-{trading_date[4:6]}-{trading_date[6:8]}"
-        previous_volume = 0.0
-        previous_amount = 0.0
-        minute_bars: list[BarPayload] = []
-        for row in rows:
-            parts = str(row).split()
-            if len(parts) < 4:
-                continue
-            clock, price_text, cumulative_volume_text, cumulative_amount_text = parts[:4]
-            price = float(price_text)
-            cumulative_volume = float(cumulative_volume_text)
-            cumulative_amount = float(cumulative_amount_text)
-            volume = max(0.0, cumulative_volume - previous_volume)
-            amount = max(0.0, cumulative_amount - previous_amount)
-            previous_volume = cumulative_volume
-            previous_amount = cumulative_amount
-            minute_bars.append(
-                BarPayload(
-                    time=f"{date_text} {clock[:2]}:{clock[2:4]}",
-                    open=price,
-                    high=price,
-                    low=price,
-                    close=price,
-                    volume=volume,
-                    amount=amount,
-                )
-            )
+        minute_bars = self._parse_hk_minute_sessions(node)
+        if not minute_bars:
+            raise ProviderError(f"No recent-session minute data for {instrument.provider_symbol}")
         interval = int(timeframe.removesuffix("m"))
         bars = minute_bars if interval == 1 else aggregate_minute_bars(minute_bars, interval)
-        return bars, self._instrument_name(node, instrument.provider_symbol), node
+        return bars[-limit:], self._instrument_name(node, instrument.provider_symbol), node
 
     def quote_from_node(self, instrument: Instrument, node: dict[str, Any], name: str | None) -> QuoteResponse | None:
         quote = node.get("qt", {}).get(instrument.provider_symbol, [])

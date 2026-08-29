@@ -222,6 +222,9 @@ class MarketDataService:
                 issues = self._quality_issues(bars)
                 if provider.name == "yahoo-chart":
                     issues.append("备用源不提供成交额与换手率")
+                if instrument.market == "HK" and timeframe.endswith("m") and provider.name == "tencent-public":
+                    session_count = len({bar.time[:10] for bar in bars})
+                    issues.append(f"腾讯港股分钟行情当前覆盖最近{session_count}个交易日")
                 return bars, name, provider.name, index > 0, attempts, issues, applied_adjustment
             except (ProviderError, httpx.HTTPError, ValueError, KeyError, TypeError) as error:
                 self._record_provider_result(provider.name, error)
@@ -279,7 +282,11 @@ class MarketDataService:
     ) -> BarsResponse:
         instrument: Instrument = normalize_symbol(raw_symbol)
         normalized_limit = max(1, min(limit, 2000))
-        cache_key = f"v3-{instrument.provider_symbol}-{timeframe}-{adjustment}"
+        # HK intraday v4 uses multi-session data and session-aware aggregation.
+        # Keep it separate from older one-session cache files whose bucket
+        # timestamps would otherwise be merged into the corrected candles.
+        cache_version = "v4" if instrument.market == "HK" and timeframe.endswith("m") else "v3"
+        cache_key = f"{cache_version}-{instrument.provider_symbol}-{timeframe}-{adjustment}"
         cached_value = None if refresh else self.cache.get(cache_key, self._ttl(timeframe))
         if cached_value and cached_value.get("requested_limit", 0) >= normalized_limit:
             response = BarsResponse.model_validate(cached_value)

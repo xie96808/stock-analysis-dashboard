@@ -1,3 +1,6 @@
+import asyncio
+
+from backend.app.market_data.symbols import normalize_symbol
 from backend.app.market_data.tencent import TencentProvider
 
 
@@ -28,4 +31,69 @@ def test_search_parser_supports_chinese_stock_names() -> None:
     assert [(item.input, item.name) for item in results] == [
         ("sh600988", "赤峰黄金"),
         ("hk06693", "赤峰黄金"),
+    ]
+
+
+def test_hk_minute_parser_resets_cumulative_values_for_each_session() -> None:
+    bars = TencentProvider._parse_hk_minute_sessions({
+        "data": [
+            {"date": "20260827", "data": [
+                "0930 44.000 100 4400.000",
+                "0931 45.000 160 7100.000",
+            ]},
+            {"date": "20260828", "data": [
+                "0930 46.000 80 3680.000",
+                "0931 45.500 130 5955.000",
+            ]},
+        ],
+    })
+
+    assert [bar.time for bar in bars] == [
+        "2026-08-27 09:30", "2026-08-27 09:31",
+        "2026-08-28 09:30", "2026-08-28 09:31",
+    ]
+    assert [bar.volume for bar in bars] == [100, 60, 80, 50]
+    assert [bar.amount for bar in bars] == [4400, 2700, 3680, 2275]
+
+
+def test_hk_minute_request_uses_multi_day_route_and_keeps_sessions() -> None:
+    payload = {
+        "code": 0,
+        "data": {"hk01888": {"data": [
+            {"date": "20260827", "data": [
+                "0930 44.000 100 4400.000",
+                "1300 45.000 160 7100.000",
+            ]},
+            {"date": "20260828", "data": [
+                "0930 46.000 80 3680.000",
+                "1300 45.500 130 5955.000",
+            ]},
+        ]}},
+    }
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return payload
+
+    class FakeClient:
+        url = ""
+        params: dict[str, str] = {}
+
+        async def get(self, url: str, params: dict[str, str]) -> FakeResponse:
+            self.url = url
+            self.params = params
+            return FakeResponse()
+
+    client = FakeClient()
+    provider = TencentProvider(client=client)  # type: ignore[arg-type]
+    bars, _, _ = asyncio.run(provider.minute_bars(normalize_symbol("hk01888"), "60m", 640))
+
+    assert client.url == TencentProvider.multi_day_minute_url
+    assert client.params == {"code": "hk01888"}
+    assert [bar.time for bar in bars] == [
+        "2026-08-27 09:30", "2026-08-27 13:00",
+        "2026-08-28 09:30", "2026-08-28 13:00",
     ]

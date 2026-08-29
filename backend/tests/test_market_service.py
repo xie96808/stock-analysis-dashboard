@@ -98,6 +98,15 @@ def test_service_filters_intraday_date(tmp_path: Path) -> None:
     assert result.adjustment_applied == "none"
 
 
+def test_hk_intraday_uses_new_cache_namespace(tmp_path: Path) -> None:
+    service = MarketDataService(tmp_path, provider=FakeProvider())  # type: ignore[arg-type]
+
+    asyncio.run(service.get_bars("hk00700", "60m", "qfq", 20))
+
+    assert service.cache.get_any("v4-hk00700-60m-qfq") is not None
+    assert service.cache.get_any("v3-hk00700-60m-qfq") is None
+
+
 def test_refresh_merges_new_bars_into_local_history(tmp_path: Path) -> None:
     provider = FakeProvider()
     service = MarketDataService(tmp_path, provider=provider)  # type: ignore[arg-type]

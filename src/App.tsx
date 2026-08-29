@@ -1370,10 +1370,13 @@ export default function App() {
         </div>
       </section>
 
-      {instrumentSwitchLabel && marketState === 'loading' && (
+      {marketState === 'loading' && (
         <div className="instrument-loading" role="status" aria-live="polite">
           <span className="instrument-loading-spinner" />
-          <div><strong>正在切换标的</strong><small>{instrumentSwitchLabel} · 正在读取行情与筹码数据</small></div>
+          <div>
+            <strong>{instrumentSwitchLabel ? '正在切换标的' : '正在切换周期'}</strong>
+            <small>{instrumentSwitchLabel ? `${instrumentSwitchLabel} · 正在读取行情与筹码数据` : `${displayName} · 正在加载${timeframe}行情`}</small>
+          </div>
           <i />
         </div>
       )}
@@ -1384,7 +1387,10 @@ export default function App() {
             <button
               key={item}
               className={item === timeframe ? 'is-active' : ''}
+              aria-busy={item === timeframe && marketState === 'loading'}
               onClick={() => {
+                if (item === timeframe) return
+                setMarketState('loading')
                 setTimeframe(item)
                 notify(`正在加载${item}真实行情`)
               }}

@@ -47,11 +47,17 @@ def aggregate_minute_bars(bars: list[BarPayload], minutes: int) -> list[BarPaylo
     for bar in bars:
         hour, minute = map(int, bar.time[11:16].split(":"))
         clock_minute = hour * 60 + minute
-        if clock_minute < 12 * 60:
-            session_offset = max(0, clock_minute - (9 * 60 + 30))
+        if clock_minute <= 12 * 60:
+            session = "am"
+            # The 12:00/11:30 closing print belongs to the final morning
+            # candle instead of creating a new bucket at the exact boundary.
+            session_offset = min(149, max(0, clock_minute - (9 * 60 + 30)))
         else:
-            session_offset = 150 + max(0, clock_minute - 13 * 60)
-        key = f"{bar.time[:10]}-{session_offset // minutes}"
+            session = "pm"
+            session_offset = min(179, max(0, clock_minute - 13 * 60))
+        # Include the session in the key.  Without it, a 60-minute candle can
+        # silently combine 11:30-12:00 with 13:00-13:29 across the lunch break.
+        key = f"{bar.time[:10]}-{session}-{session_offset // minutes}"
         groups.setdefault(key, []).append(bar)
 
     result: list[BarPayload] = []
