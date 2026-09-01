@@ -194,6 +194,15 @@ class MarketDataService:
                 self._record_provider_result(provider.name, error)
         return []
 
+
+    @staticmethod
+    def _applied_adjustment(node: dict, requested: Adjustment) -> Adjustment:
+        series = node.get("_bar_series") if isinstance(node, dict) else None
+        mapping = {"day": "none", "qfqday": "qfq", "hfqday": "hfq"}
+        if series in mapping:
+            return mapping[series]  # type: ignore[return-value]
+        return requested
+
     async def _fetch_bars(
         self,
         instrument: Instrument,
@@ -207,12 +216,12 @@ class MarketDataService:
             attempts.append(provider.name)
             try:
                 if timeframe in {"1w", "1M"}:
-                    daily, name, _ = await provider.daily_bars(instrument, adjustment, min(2000, limit * 7))
+                    daily, name, node = await provider.daily_bars(instrument, adjustment, min(2000, limit * 7))
                     bars = aggregate_bars(daily, timeframe)
-                    applied_adjustment = adjustment
+                    applied_adjustment = self._applied_adjustment(node, adjustment)
                 elif timeframe == "1d":
-                    bars, name, _ = await provider.daily_bars(instrument, adjustment, limit)
-                    applied_adjustment = adjustment
+                    bars, name, node = await provider.daily_bars(instrument, adjustment, limit)
+                    applied_adjustment = self._applied_adjustment(node, adjustment)
                 else:
                     bars, name, _ = await provider.minute_bars(instrument, timeframe, limit)
                     applied_adjustment = "none"
@@ -220,6 +229,8 @@ class MarketDataService:
                     raise ProviderError("provider returned no bars")
                 self._record_provider_result(provider.name, None)
                 issues = self._quality_issues(bars)
+                if applied_adjustment != adjustment:
+                    issues.append("腾讯港股日线无前复权序列，已使用不复权")
                 if provider.name == "yahoo-chart":
                     issues.append("备用源不提供成交额与换手率")
                 if instrument.market == "HK" and timeframe.endswith("m") and provider.name == "tencent-public":
