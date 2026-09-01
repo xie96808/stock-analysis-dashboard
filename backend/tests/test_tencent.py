@@ -153,3 +153,30 @@ def test_daily_bars_use_the_requested_adjustment_series() -> None:
     assert name == "测试标的"
     assert bars[0].close == 5.5
     assert bars[0].open == 5.0
+
+
+def test_daily_bars_hk_falls_back_to_unadjusted_when_qfqday_missing() -> None:
+    payload = {
+        "code": 0,
+        "data": {"hk00311": {
+            "day": [["2026-08-28", "10", "11", "12", "9", "100"]],
+            "qt": {"hk00311": ["", "仁山智库"]},
+        }},
+    }
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return payload
+
+    class FakeClient:
+        async def get(self, url: str, params: dict[str, str]) -> FakeResponse:
+            return FakeResponse()
+
+    provider = TencentProvider(client=FakeClient())  # type: ignore[arg-type]
+    bars, name, node = asyncio.run(provider.daily_bars(normalize_symbol("hk00311"), "qfq", 20))
+    assert name == "仁山智库"
+    assert bars[0].close == 11
+    assert node["_bar_series"] == "day"

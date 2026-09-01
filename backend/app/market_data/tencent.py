@@ -150,7 +150,22 @@ class TencentProvider:
         if not node:
             raise ProviderError(f"No daily data for {instrument.provider_symbol}")
         preferred_key = {"none": "day", "qfq": "qfqday", "hfq": "hfqday"}[adjustment]
+        used_key = preferred_key
         rows = node.get(preferred_key) or []
+        # Tencent HK daily payloads expose `day` only. Refusing qfqday here
+        # used to fail the whole chain and hit Yahoo 403. Fall back to
+        # unadjusted bars and let the service label adjustment_applied.
+        if not rows and instrument.market == "HK" and preferred_key != "day":
+            rows = node.get("day") or []
+            used_key = "day"
+            if not rows:
+                unadjusted = await self._get(
+                    self.daily_url,
+                    {"param": f"{instrument.provider_symbol},day,,,{limit},"},
+                )
+                node = unadjusted.get("data", {}).get(instrument.provider_symbol) or {}
+                rows = node.get("day") or []
+                used_key = "day"
         if not rows:
             raise ProviderError(f"No {preferred_key} data for {instrument.provider_symbol}")
         multiplier = self._volume_multiplier(instrument)
@@ -168,7 +183,9 @@ class TencentProvider:
             for row in rows
             if len(row) >= 6
         ]
-        return bars, self._instrument_name(node, instrument.provider_symbol), node
+        meta = dict(node)
+        meta["_bar_series"] = used_key
+        return bars, self._instrument_name(node, instrument.provider_symbol), meta
 
     async def minute_bars(
         self,
