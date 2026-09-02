@@ -10,13 +10,6 @@ export type StockBar = {
   turnoverRate?: number | null
 }
 
-export type MacdPoint = {
-  date: string
-  dif: number
-  dea: number
-  histogram: number
-}
-
 export type IntradayPoint = {
   timestamp: number
   price: number
@@ -143,107 +136,26 @@ export function createFutureDates() {
   return tradingDates('2026-08-10', '2027-01-08')
 }
 
-export function ema(values: number[], period: number) {
-  const smoothing = 2 / (period + 1)
-  const result: number[] = []
-  let previous = values[0] ?? 0
-  values.forEach((value, index) => {
-    previous = index === 0 ? value : value * smoothing + previous * (1 - smoothing)
-    result.push(previous)
-  })
-  return result
-}
+import {
+  ema,
+  movingAverage,
+  calculateMacd,
+  bollingerBands,
+  parabolicSar,
+  type MacdPoint,
+  type BollingerPoint,
+  type SarPoint,
+} from '../indicators/tdx'
 
-export function movingAverage(bars: StockBar[], period: number, exponential = false) {
-  if (exponential) return ema(bars.map((bar) => bar.close), period)
-  return bars.map((_, index) => {
-    if (index + 1 < period) return null
-    const window = bars.slice(index + 1 - period, index + 1)
-    return window.reduce((sum, bar) => sum + bar.close, 0) / period
-  })
-}
-
-export function calculateMacd(bars: StockBar[], fastPeriod = 12, slowPeriod = 26, signalPeriod = 9): MacdPoint[] {
-  const closes = bars.map((bar) => bar.close)
-  const fast = ema(closes, fastPeriod)
-  const slow = ema(closes, slowPeriod)
-  const dif = fast.map((value, index) => value - slow[index])
-  const dea = ema(dif, signalPeriod)
-
-  return bars.map((bar, index) => ({
-    date: bar.date,
-    dif: dif[index],
-    dea: dea[index],
-    histogram: (dif[index] - dea[index]) * 2,
-  }))
-}
-
-
-export type BollingerPoint = {
-  date: string
-  mid: number | null
-  upper: number | null
-  lower: number | null
-}
-
-export function bollingerBands(bars: StockBar[], period = 20, multiplier = 2): BollingerPoint[] {
-  const mids = movingAverage(bars, period)
-  return bars.map((bar, index) => {
-    const mid = mids[index]
-    if (mid == null) return { date: bar.date, mid: null, upper: null, lower: null }
-    const window = bars.slice(index + 1 - period, index + 1)
-    const variance = window.reduce((sum, item) => sum + (item.close - mid) ** 2, 0) / period
-    const deviation = Math.sqrt(variance) * multiplier
-    return { date: bar.date, mid, upper: mid + deviation, lower: mid - deviation }
-  })
-}
-
-export type SarPoint = {
-  date: string
-  value: number
-  uptrend: boolean
-}
-
-export function parabolicSar(bars: StockBar[], step = 0.02, maximum = 0.2): Array<SarPoint | null> {
-  if (bars.length === 0) return []
-  if (bars.length === 1) return [{ date: bars[0].date, value: bars[0].low, uptrend: true }]
-  let uptrend = bars[1].close >= bars[0].close
-  let extreme = uptrend ? Math.max(bars[0].high, bars[1].high) : Math.min(bars[0].low, bars[1].low)
-  let acceleration = step
-  let sar = uptrend ? bars[0].low : bars[0].high
-  const result: Array<SarPoint | null> = [{ date: bars[0].date, value: sar, uptrend }]
-  for (let index = 1; index < bars.length; index += 1) {
-    const bar = bars[index]
-    const previous = bars[index - 1]
-    const prior = bars[index - 2]
-    let next = sar + acceleration * (extreme - sar)
-    if (uptrend) {
-      next = Math.min(next, previous.low, prior ? prior.low : previous.low)
-      if (bar.low < next) {
-        uptrend = false
-        next = extreme
-        extreme = bar.low
-        acceleration = step
-      } else if (bar.high > extreme) {
-        extreme = bar.high
-        acceleration = Math.min(maximum, acceleration + step)
-      }
-    } else {
-      next = Math.max(next, previous.high, prior ? prior.high : previous.high)
-      if (bar.high > next) {
-        uptrend = true
-        next = extreme
-        extreme = bar.high
-        acceleration = step
-      } else if (bar.low < extreme) {
-        extreme = bar.low
-        acceleration = Math.min(maximum, acceleration + step)
-      }
-    }
-    sar = next
-    result.push({ date: bar.date, value: sar, uptrend })
-  }
-  return result
+export {
+  ema,
+  movingAverage,
+  calculateMacd,
+  bollingerBands,
+  parabolicSar,
+  type MacdPoint,
+  type BollingerPoint,
+  type SarPoint,
 }
 
 export function createIntradayFixture(bar: StockBar): IntradayPoint[] {

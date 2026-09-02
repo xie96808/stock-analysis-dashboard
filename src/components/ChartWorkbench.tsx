@@ -16,7 +16,8 @@ import {
   type UTCTimestamp,
   type WhitespaceData,
 } from 'lightweight-charts'
-import { bollingerBands, calculateMacd, movingAverage, parabolicSar, type StockBar } from '../data/fixture'
+import { type StockBar } from '../data/fixture'
+import { bollingerBands, calculateMacd, movingAverage, parabolicSar, volumeMovingAverage } from '../indicators/tdx'
 import { placeIntradayPrompt, supportsIntraday } from '../chart/intraday'
 import type { Drawing } from '../drawings/model'
 import { DrawingLayer } from './DrawingLayer'
@@ -151,9 +152,7 @@ function formatVolume(value: number) {
 }
 
 function averageVolume(bars: StockBar[], length: number) {
-  const values = bars.slice(-length)
-  if (!values.length) return 0
-  return values.reduce((sum, bar) => sum + bar.volume, 0) / values.length
+  return volumeMovingAverage(bars, length).at(-1)
 }
 
 export function ChartWorkbench({
@@ -780,8 +779,8 @@ export function ChartWorkbench({
       {!cleanMode && indicators.volumeEnabled && <div className="pane-label pane-label-volume" style={{ top: geometry.mainPaneHeight + 10 }}>
         <strong>VOL</strong>
         <span>{formatVolume(latestBar?.volume ?? 0)}</span>
-        <span className="pane-label-muted">MA5 {formatVolume(averageVolume(bars, 5))}</span>
-        <span className="pane-label-muted">MA10 {formatVolume(averageVolume(bars, 10))}</span>
+        <span className="pane-label-muted">MA5 {averageVolume(bars, 5) == null ? '--' : formatVolume(averageVolume(bars, 5) as number)}</span>
+        <span className="pane-label-muted">MA10 {averageVolume(bars, 10) == null ? '--' : formatVolume(averageVolume(bars, 10) as number)}</span>
       </div>}
       {!cleanMode && indicators.macdEnabled && <div className="pane-label pane-label-macd" style={{ top: geometry.mainPaneHeight + (indicators.volumeEnabled ? 124 : 10) }}>
         <strong>MACD {indicators.macdFast} {indicators.macdSlow} {indicators.macdSignal}</strong>

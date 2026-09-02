@@ -1,4 +1,5 @@
 import type { StockBar } from '../data/fixture'
+import { calculateMacd } from '../indicators/tdx'
 
 export type AlertType = 'price_above' | 'price_below' | 'macd_bullish' | 'macd_bearish' | 'volume_ratio'
 
@@ -36,28 +37,14 @@ export function selectAlertBars(dailyBars: StockBar[], chartBars: StockBar[]) {
   return []
 }
 
-function ema(values: number[], period: number) {
-  if (!values.length) return []
-  const alpha = 2 / (period + 1)
-  const result = [values[0]]
-  for (let index = 1; index < values.length; index += 1) {
-    result.push(values[index] * alpha + result[index - 1] * (1 - alpha))
-  }
-  return result
-}
-
 function macdState(bars: StockBar[]) {
-  const closes = bars.map((bar) => bar.close)
-  if (closes.length < 35) return { bullishCross: false, bearishCross: false }
-  const fast = ema(closes, 12)
-  const slow = ema(closes, 26)
-  const dif = fast.map((value, index) => value - slow[index])
-  const dea = ema(dif, 9)
-  const previous = dif.length - 2
-  const current = dif.length - 1
+  if (bars.length < 35) return { bullishCross: false, bearishCross: false }
+  const points = calculateMacd(bars, 12, 26, 9)
+  const previous = points.length - 2
+  const current = points.length - 1
   return {
-    bullishCross: dif[previous] <= dea[previous] && dif[current] > dea[current],
-    bearishCross: dif[previous] >= dea[previous] && dif[current] < dea[current],
+    bullishCross: points[previous].dif <= points[previous].dea && points[current].dif > points[current].dea,
+    bearishCross: points[previous].dif >= points[previous].dea && points[current].dif < points[current].dea,
   }
 }
 

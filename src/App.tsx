@@ -1642,7 +1642,7 @@ export default function App() {
               />
             ))}
           </label>
-          <span className="indicator-hint">BOLL/SAR 画在主图，默认关闭。分红与业绩只用已公布日期，港股和无数据时不显示。拖动副图分隔线可调整面板高度。</span>
+          <span className="indicator-hint">指标按通达信口径：EMA 从第一根收盘价递推，MACD 柱为 (DIF-DEA)×2，BOLL 用总体标准差。BOLL/SAR 与分红业绩默认关闭。</span>
         </section>
       )}
 
