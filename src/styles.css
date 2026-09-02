@@ -163,7 +163,7 @@ button {
   right: calc(var(--journal-width, 326px) + 20px);
   z-index: 24;
   display: grid;
-  width: 340px;
+  width: 360px;
   gap: 9px;
   padding: 14px;
   border: 1px solid var(--border-strong);
@@ -244,7 +244,30 @@ button {
 }
 
 .indicator-check.macd-config {
-  grid-template-columns: 18px 58px repeat(3, 1fr);
+  grid-template-columns: 18px 58px minmax(0, 1fr);
+}
+
+.indicator-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  min-width: 0;
+}
+
+.indicator-fields.is-triple {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.indicator-fields > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.indicator-fields small {
+  color: var(--muted-2);
+  font-size: 10px;
+  line-height: 1;
 }
 
 .indicator-check input[type="checkbox"] {
@@ -254,6 +277,7 @@ button {
 }
 
 .indicator-check input:not([type="checkbox"]) {
+  width: 100%;
   min-width: 0;
   height: 30px;
   padding: 0 7px;
@@ -3619,7 +3643,7 @@ button {
   .indicator-popover {
     top: 118px;
     right: 8px;
-    width: min(340px, calc(100vw - 16px));
+    width: min(360px, calc(100vw - 16px));
   }
 
   .instrument-loading {

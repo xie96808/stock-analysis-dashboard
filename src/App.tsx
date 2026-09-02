@@ -1610,14 +1610,30 @@ export default function App() {
           <label className="indicator-check">
             <input type="checkbox" checked={indicators.bollEnabled} onChange={(event) => setIndicators((current) => ({ ...current, bollEnabled: event.target.checked }))} />
             <span>BOLL</span>
-            <input aria-label="BOLL周期" type="number" min="2" max="500" value={indicators.bollPeriod} onChange={(event) => setIndicators((current) => ({ ...current, bollPeriod: Number(event.target.value) || 20 }))} />
-            <input aria-label="BOLL倍数" type="number" min="0.5" max="5" step="0.1" value={indicators.bollMultiplier} onChange={(event) => setIndicators((current) => ({ ...current, bollMultiplier: Number(event.target.value) || 2 }))} />
+            <span className="indicator-fields" onClick={(event) => event.preventDefault()}>
+              <span>
+                <small>周期</small>
+                <input aria-label="BOLL周期" title="周期" type="number" min="2" max="500" value={indicators.bollPeriod} onChange={(event) => setIndicators((current) => ({ ...current, bollPeriod: Number(event.target.value) || 20 }))} />
+              </span>
+              <span>
+                <small>倍数</small>
+                <input aria-label="BOLL倍数" title="倍数" type="number" min="0.5" max="5" step="0.1" value={indicators.bollMultiplier} onChange={(event) => setIndicators((current) => ({ ...current, bollMultiplier: Number(event.target.value) || 2 }))} />
+              </span>
+            </span>
           </label>
           <label className="indicator-check">
             <input type="checkbox" checked={indicators.sarEnabled} onChange={(event) => setIndicators((current) => ({ ...current, sarEnabled: event.target.checked }))} />
             <span>SAR</span>
-            <input aria-label="SAR步长" type="number" min="0.001" max="0.2" step="0.01" value={indicators.sarStep} onChange={(event) => setIndicators((current) => ({ ...current, sarStep: Number(event.target.value) || 0.02 }))} />
-            <input aria-label="SAR上限" type="number" min="0.02" max="1" step="0.01" value={indicators.sarMax} onChange={(event) => setIndicators((current) => ({ ...current, sarMax: Number(event.target.value) || 0.2 }))} />
+            <span className="indicator-fields" onClick={(event) => event.preventDefault()}>
+              <span>
+                <small>步长</small>
+                <input aria-label="SAR步长" title="步长" type="number" min="0.001" max="0.2" step="0.01" value={indicators.sarStep} onChange={(event) => setIndicators((current) => ({ ...current, sarStep: Number(event.target.value) || 0.02 }))} />
+              </span>
+              <span>
+                <small>上限</small>
+                <input aria-label="SAR上限" title="上限" type="number" min="0.02" max="1" step="0.01" value={indicators.sarMax} onChange={(event) => setIndicators((current) => ({ ...current, sarMax: Number(event.target.value) || 0.2 }))} />
+              </span>
+            </span>
           </label>
           <label className="indicator-check compact">
             <input type="checkbox" checked={indicators.eventsEnabled} onChange={(event) => setIndicators((current) => ({ ...current, eventsEnabled: event.target.checked }))} />
@@ -1630,17 +1646,26 @@ export default function App() {
           <label className="indicator-check macd-config">
             <input type="checkbox" checked={indicators.macdEnabled} onChange={(event) => setIndicators((current) => ({ ...current, macdEnabled: event.target.checked }))} />
             <span>MACD</span>
-            {(['macdFast', 'macdSlow', 'macdSignal'] as const).map((key) => (
-              <input
-                key={key}
-                aria-label={key === 'macdFast' ? 'MACD快线' : key === 'macdSlow' ? 'MACD慢线' : 'MACD信号线'}
-                type="number"
-                min="2"
-                max="200"
-                value={indicators[key]}
-                onChange={(event) => setIndicators((current) => ({ ...current, [key]: Number(event.target.value) || defaultIndicators[key] }))}
-              />
-            ))}
+            <span className="indicator-fields is-triple" onClick={(event) => event.preventDefault()}>
+              {([
+                ['macdFast', '快线', 'MACD快线'],
+                ['macdSlow', '慢线', 'MACD慢线'],
+                ['macdSignal', '信号', 'MACD信号线'],
+              ] as const).map(([key, caption, ariaLabel]) => (
+                <span key={key}>
+                  <small>{caption}</small>
+                  <input
+                    aria-label={ariaLabel}
+                    title={caption}
+                    type="number"
+                    min="2"
+                    max="200"
+                    value={indicators[key]}
+                    onChange={(event) => setIndicators((current) => ({ ...current, [key]: Number(event.target.value) || defaultIndicators[key] }))}
+                  />
+                </span>
+              ))}
+            </span>
           </label>
           <span className="indicator-hint">指标按通达信口径：EMA 从第一根收盘价递推，MACD 柱为 (DIF-DEA)×2，BOLL 用总体标准差。BOLL/SAR 与分红业绩默认关闭。</span>
         </section>
