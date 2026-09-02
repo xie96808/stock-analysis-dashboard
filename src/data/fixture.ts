@@ -178,6 +178,74 @@ export function calculateMacd(bars: StockBar[], fastPeriod = 12, slowPeriod = 26
   }))
 }
 
+
+export type BollingerPoint = {
+  date: string
+  mid: number | null
+  upper: number | null
+  lower: number | null
+}
+
+export function bollingerBands(bars: StockBar[], period = 20, multiplier = 2): BollingerPoint[] {
+  const mids = movingAverage(bars, period)
+  return bars.map((bar, index) => {
+    const mid = mids[index]
+    if (mid == null) return { date: bar.date, mid: null, upper: null, lower: null }
+    const window = bars.slice(index + 1 - period, index + 1)
+    const variance = window.reduce((sum, item) => sum + (item.close - mid) ** 2, 0) / period
+    const deviation = Math.sqrt(variance) * multiplier
+    return { date: bar.date, mid, upper: mid + deviation, lower: mid - deviation }
+  })
+}
+
+export type SarPoint = {
+  date: string
+  value: number
+  uptrend: boolean
+}
+
+export function parabolicSar(bars: StockBar[], step = 0.02, maximum = 0.2): Array<SarPoint | null> {
+  if (bars.length === 0) return []
+  if (bars.length === 1) return [{ date: bars[0].date, value: bars[0].low, uptrend: true }]
+  let uptrend = bars[1].close >= bars[0].close
+  let extreme = uptrend ? Math.max(bars[0].high, bars[1].high) : Math.min(bars[0].low, bars[1].low)
+  let acceleration = step
+  let sar = uptrend ? bars[0].low : bars[0].high
+  const result: Array<SarPoint | null> = [{ date: bars[0].date, value: sar, uptrend }]
+  for (let index = 1; index < bars.length; index += 1) {
+    const bar = bars[index]
+    const previous = bars[index - 1]
+    const prior = bars[index - 2]
+    let next = sar + acceleration * (extreme - sar)
+    if (uptrend) {
+      next = Math.min(next, previous.low, prior ? prior.low : previous.low)
+      if (bar.low < next) {
+        uptrend = false
+        next = extreme
+        extreme = bar.low
+        acceleration = step
+      } else if (bar.high > extreme) {
+        extreme = bar.high
+        acceleration = Math.min(maximum, acceleration + step)
+      }
+    } else {
+      next = Math.max(next, previous.high, prior ? prior.high : previous.high)
+      if (bar.high > next) {
+        uptrend = true
+        next = extreme
+        extreme = bar.high
+        acceleration = step
+      } else if (bar.low < extreme) {
+        extreme = bar.low
+        acceleration = Math.min(maximum, acceleration + step)
+      }
+    }
+    sar = next
+    result.push({ date: bar.date, value: sar, uptrend })
+  }
+  return result
+}
+
 export function createIntradayFixture(bar: StockBar): IntradayPoint[] {
   const seed = Number(bar.date.replaceAll('-', ''))
   const random = mulberry32(seed)

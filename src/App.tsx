@@ -6,6 +6,7 @@ import {
   exportJournalRecord,
   getApiHealth,
   getJournalRecord,
+  getCorporateEvents,
   getMarketBars,
   getMarketQuote,
   importJournalProject,
@@ -21,6 +22,7 @@ import {
   type JournalRecordSummary,
   type MarketAdjustment,
   type MarketInstrument,
+  type CorporateEvent,
   type MarketQuoteResponse,
   type MarketTimeframe,
 } from './api/client'
@@ -224,6 +226,13 @@ const defaultIndicators: IndicatorConfig = {
   macdFast: 12,
   macdSlow: 26,
   macdSignal: 9,
+  bollEnabled: false,
+  bollPeriod: 20,
+  bollMultiplier: 2,
+  sarEnabled: false,
+  sarStep: 0.02,
+  sarMax: 0.2,
+  eventsEnabled: false,
 }
 
 function recordFromSummary(record: JournalRecordSummary): RecordItem {
@@ -275,6 +284,7 @@ export default function App() {
   const [indicators, setIndicators] = useState<IndicatorConfig>(() => (
     parseIndicatorConfig(window.localStorage.getItem('dashboard-indicators-v1'), defaultIndicators)
   ))
+  const [corporateEvents, setCorporateEvents] = useState<CorporateEvent[]>([])
   const [journalOpen, setJournalOpen] = useState(() => (
     typeof window === 'undefined' || !window.matchMedia('(max-width: 760px)').matches
   ))
@@ -611,6 +621,20 @@ export default function App() {
   useEffect(() => {
     window.localStorage.setItem('dashboard-indicators-v1', JSON.stringify(indicators))
   }, [indicators])
+
+  useEffect(() => {
+    if (!indicators.eventsEnabled || instrument.market !== 'CN') {
+      setCorporateEvents([])
+      return
+    }
+    const controller = new AbortController()
+    getCorporateEvents(activeSymbol, controller.signal)
+      .then((payload) => setCorporateEvents(payload.events))
+      .catch(() => {
+        if (!controller.signal.aborted) setCorporateEvents([])
+      })
+    return () => controller.abort()
+  }, [activeSymbol, indicators.eventsEnabled, instrument.market])
 
   useEffect(() => {
     window.localStorage.setItem('dashboard-drawings-v1', JSON.stringify(drawingStore))
@@ -1583,6 +1607,22 @@ export default function App() {
             <span>EMA</span>
             <input aria-label="EMA周期" type="number" min="2" max="500" value={indicators.emaPeriod} onChange={(event) => setIndicators((current) => ({ ...current, emaPeriod: Number(event.target.value) || 20 }))} />
           </label>
+          <label className="indicator-check">
+            <input type="checkbox" checked={indicators.bollEnabled} onChange={(event) => setIndicators((current) => ({ ...current, bollEnabled: event.target.checked }))} />
+            <span>BOLL</span>
+            <input aria-label="BOLL周期" type="number" min="2" max="500" value={indicators.bollPeriod} onChange={(event) => setIndicators((current) => ({ ...current, bollPeriod: Number(event.target.value) || 20 }))} />
+            <input aria-label="BOLL倍数" type="number" min="0.5" max="5" step="0.1" value={indicators.bollMultiplier} onChange={(event) => setIndicators((current) => ({ ...current, bollMultiplier: Number(event.target.value) || 2 }))} />
+          </label>
+          <label className="indicator-check">
+            <input type="checkbox" checked={indicators.sarEnabled} onChange={(event) => setIndicators((current) => ({ ...current, sarEnabled: event.target.checked }))} />
+            <span>SAR</span>
+            <input aria-label="SAR步长" type="number" min="0.001" max="0.2" step="0.01" value={indicators.sarStep} onChange={(event) => setIndicators((current) => ({ ...current, sarStep: Number(event.target.value) || 0.02 }))} />
+            <input aria-label="SAR上限" type="number" min="0.02" max="1" step="0.01" value={indicators.sarMax} onChange={(event) => setIndicators((current) => ({ ...current, sarMax: Number(event.target.value) || 0.2 }))} />
+          </label>
+          <label className="indicator-check compact">
+            <input type="checkbox" checked={indicators.eventsEnabled} onChange={(event) => setIndicators((current) => ({ ...current, eventsEnabled: event.target.checked }))} />
+            <span>分红 / 业绩日</span>
+          </label>
           <label className="indicator-check compact">
             <input type="checkbox" checked={indicators.volumeEnabled} onChange={(event) => setIndicators((current) => ({ ...current, volumeEnabled: event.target.checked }))} />
             <span>VOL 成交量</span>
@@ -1602,7 +1642,7 @@ export default function App() {
               />
             ))}
           </label>
-          <span className="indicator-hint">拖动副图分隔线可调整面板高度；全部面板共享时间轴与十字光标。</span>
+          <span className="indicator-hint">BOLL/SAR 画在主图，默认关闭。分红与业绩只用已公布日期，港股和无数据时不显示。拖动副图分隔线可调整面板高度。</span>
         </section>
       )}
 
@@ -1669,6 +1709,7 @@ export default function App() {
               candleTheme={candleTheme}
               cleanMode={cleanMode}
               indicators={indicators}
+              corporateEvents={corporateEvents}
               activeTool={activeTool}
               snapMode={snapMode}
               drawings={drawings}

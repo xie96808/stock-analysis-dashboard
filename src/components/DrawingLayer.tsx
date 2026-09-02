@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type WheelEvent as ReactWheelEvent } from 'react'
 import type { BusinessDay, IChartApi, ISeriesApi, Time, UTCTimestamp } from 'lightweight-charts'
 import {
   createDrawingId,
@@ -12,6 +12,7 @@ import {
   toolToDrawingType,
   wheelAdjustedPrice,
   wheelAdjustedFontSize,
+  applyHorizontalPrice,
   type Drawing,
   type DrawingAnchor,
 } from '../drawings/model'
@@ -149,7 +150,40 @@ export function DrawingLayer({
     return y == null ? null : { x: width / 2, y }
   }
 
+  const [priceEdit, setPriceEdit] = useState<{ id: string; value: string; y: number } | null>(null)
+  const priceInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!priceEdit) return
+    priceInputRef.current?.focus()
+    priceInputRef.current?.select()
+  }, [priceEdit?.id])
+
+  const startPriceEdit = (drawing: Drawing) => {
+    if (drawing.type !== 'horizontal' || drawing.locked) return
+    setSelectedId(drawing.id)
+    const y = candleSeries?.priceToCoordinate(drawing.anchors[0].price)
+    setPriceEdit({
+      id: drawing.id,
+      value: String(drawing.anchors[0].price),
+      y: y == null ? 36 : y,
+    })
+  }
+
+  const commitPriceEdit = () => {
+    if (!priceEdit) return
+    const price = Number(priceEdit.value)
+    onCommit(drawings.map((drawing) => (
+      drawing.id === priceEdit.id ? applyHorizontalPrice(drawing, price) : drawing
+    )))
+    setPriceEdit(null)
+  }
+
   const begin = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.detail > 1) {
+      event.preventDefault()
+      return
+    }
     const target = event.target as SVGElement
     const object = target.closest<SVGElement>('[data-drawing-id]')
     const objectId = object?.dataset.drawingId ?? null
@@ -281,6 +315,13 @@ export function DrawingLayer({
         onPointerUp={finish}
         onPointerCancel={() => setGesture(null)}
         onWheel={scaleText}
+        onDoubleClick={(event) => {
+          const objectId = (event.target as SVGElement).closest<SVGElement>('[data-drawing-id]')?.dataset.drawingId
+          const drawing = drawings.find((item) => item.id === objectId)
+          if (!drawing || drawing.type !== 'horizontal') return
+          event.preventDefault()
+          startPriceEdit(drawing)
+        }}
       >
         {rendered.map((drawing) => {
           const anchors = drawing.anchors.map((anchor) => pointForDrawing(drawing, anchor))
@@ -367,20 +408,49 @@ export function DrawingLayer({
         })}
       </svg>
 
+      {priceEdit && (
+        <form
+          className="drawing-price-editor"
+          style={{ top: Math.max(8, Math.min(mainPaneHeight - 36, priceEdit.y - 16)), left: Math.max(8, width - 168) }}
+          onPointerDown={(event) => event.stopPropagation()}
+          onSubmit={(event) => {
+            event.preventDefault()
+            commitPriceEdit()
+          }}
+        >
+          <label>价格
+            <input
+              ref={priceInputRef}
+              aria-label="水平线精确价格"
+              inputMode="decimal"
+              value={priceEdit.value}
+              onChange={(event) => setPriceEdit({ ...priceEdit, value: event.target.value })}
+              onBlur={commitPriceEdit}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  setPriceEdit(null)
+                }
+              }}
+            />
+          </label>
+        </form>
+      )}
       {selected && (
         <div className="drawing-inspector" onPointerDown={(event) => event.stopPropagation()}>
-          <strong>{selected.type}</strong>
-          <label>日期<input type="date" value={anchorDate(selected.anchors[0])} onChange={(event) => {
+          <strong>{selected.type === 'horizontal' ? '水平线' : selected.type}</strong>
+          {selected.type !== 'horizontal' && <label>日期<input type="date" value={anchorDate(selected.anchors[0])} onChange={(event) => {
             const timestampMs = new Date(`${event.target.value}T00:00:00+08:00`).getTime()
             patchSelected({ anchors: [{ ...selected.anchors[0], timestampMs }, ...selected.anchors.slice(1)] })
-          }} /></label>
+          }} /></label>}
           <label>价格<input
             aria-label="画线价格"
             type="number"
-            step="0.01"
+            step="any"
             min="0.01"
-            title="滚轮微调 ±0.01；按住 Shift 为 ±0.10"
-            value={selected.anchors[0].price.toFixed(2)}
+            autoFocus={selected.type === 'horizontal'}
+            title="输入精确价格后回车；滚轮微调 ±0.01，Shift 为 ±0.10"
+            value={selected.anchors[0].price}
             onWheel={(event) => {
               event.preventDefault()
               event.stopPropagation()

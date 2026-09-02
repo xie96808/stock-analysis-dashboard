@@ -12,6 +12,13 @@ const indicators = {
   macdFast: 12,
   macdSlow: 26,
   macdSignal: 9,
+  bollEnabled: false,
+  bollPeriod: 20,
+  bollMultiplier: 2,
+  sarEnabled: false,
+  sarStep: 0.02,
+  sarMax: 0.2,
+  eventsEnabled: false,
 }
 
 describe('persisted preferences', () => {
@@ -42,6 +49,17 @@ describe('persisted preferences', () => {
     expect(parsed.emaPeriod).toBe(2)
     expect(parsed.macdFast).toBe(200)
     expect(parsed.volumeEnabled).toBe(false)
+    expect(parsed.bollEnabled).toBe(false)
+    expect(parsed.eventsEnabled).toBe(false)
+  })
+
+  it('keeps new overlay flags off when older saved JSON omits them', () => {
+    const parsed = parseIndicatorConfig(JSON.stringify({ maEnabled: true, emaEnabled: true }), indicators)
+    expect(parsed.bollEnabled).toBe(false)
+    expect(parsed.sarEnabled).toBe(false)
+    expect(parsed.eventsEnabled).toBe(false)
+    expect(parsed.bollPeriod).toBe(20)
+    expect(parsed.sarStep).toBe(0.02)
   })
 })
 

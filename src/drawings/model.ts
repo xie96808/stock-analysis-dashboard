@@ -115,3 +115,9 @@ export function commitDrawingGesture(drawings: Drawing[], draft: Drawing, isCrea
     ? [...drawings, draft]
     : drawings.map((drawing) => drawing.id === draft.id ? draft : drawing)
 }
+
+export function applyHorizontalPrice(drawing: Drawing, price: number): Drawing {
+  if (drawing.type !== 'horizontal' || drawing.anchors.length === 0) return drawing
+  if (!Number.isFinite(price) || price <= 0) return drawing
+  return { ...drawing, anchors: [{ ...drawing.anchors[0], price }] }
+}

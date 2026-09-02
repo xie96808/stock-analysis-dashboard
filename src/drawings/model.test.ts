@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { commitDrawingGesture, defaultDrawingStyle, drawingLayerClassName, drawingUsesTimeCoordinate, formatMeasurement, movePointDrawing, replaceDrawingAnchor, toolToDrawingType, wheelAdjustedFontSize, wheelAdjustedPrice, type Drawing } from './model'
+import { applyHorizontalPrice, commitDrawingGesture, defaultDrawingStyle, drawingLayerClassName, drawingUsesTimeCoordinate, formatMeasurement, movePointDrawing, replaceDrawingAnchor, toolToDrawingType, wheelAdjustedFontSize, wheelAdjustedPrice, type Drawing } from './model'
 
 describe('drawing model', () => {
   it('maps every implemented toolbar tool to a stable drawing type', () => {
@@ -78,5 +78,16 @@ describe('drawing model', () => {
     }
     const edited = replaceDrawingAnchor(drawing, 1, { timestampMs: 3, price: 21 })
     expect(commitDrawingGesture([drawing], edited, false)).toEqual([edited])
+  })
+
+  it('moves a horizontal line to an exact typed price', () => {
+    const drawing: Drawing = {
+      id: 'h1', symbol: 'SZSE:001280', market: 'CN', type: 'horizontal',
+      anchors: [{ timestampMs: 1, price: 12.34 }], timeframeVisibility: 'all',
+      locked: false, hidden: false, style: defaultDrawingStyle('horizontal'),
+    }
+    expect(applyHorizontalPrice(drawing, 68.5).anchors[0].price).toBe(68.5)
+    expect(applyHorizontalPrice(drawing, 0)).toEqual(drawing)
+    expect(applyHorizontalPrice({ ...drawing, type: 'trend' }, 70)).toEqual({ ...drawing, type: 'trend' })
   })
 })
