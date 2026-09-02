@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 from .config import settings
 from .backtest import BacktestRequest, BacktestResult, run_backtest
 from .market_data import MarketDataService
+from .market_data.corporate_events import CorporateEventService
 from .market_data.models import Adjustment, BarsResponse, InstrumentPayload, InstrumentSearchResult, QuoteResponse, Timeframe
 from .market_data.symbols import SymbolError
 from .market_data.base import ProviderError
@@ -21,6 +22,7 @@ from .portfolio import PaperPortfolioRepository, PaperTradeInput
 
 
 market_data = MarketDataService(settings.data_dir / "cache" / "market")
+corporate_events = CorporateEventService()
 journal = JournalRepository(settings.data_dir)
 portfolio = PaperPortfolioRepository(settings.data_dir)
 
@@ -34,6 +36,7 @@ async def lifespan(_: FastAPI):
         yield
     finally:
         await market_data.close()
+        await corporate_events.close()
 
 
 app = FastAPI(
@@ -115,6 +118,14 @@ async def market_quote(symbol: str, refresh: bool = False) -> QuoteResponse:
 @app.get("/api/market/providers", tags=["market-data"])
 async def market_providers() -> list[dict]:
     return market_data.provider_status()
+
+
+@app.get("/api/market/events/{symbol}", tags=["market-data"])
+async def market_events(symbol: str) -> dict:
+    try:
+        return await corporate_events.events_for(symbol)
+    except SymbolError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
 
 
 @app.post("/api/backtests/run", response_model=BacktestResult, tags=["backtest"])

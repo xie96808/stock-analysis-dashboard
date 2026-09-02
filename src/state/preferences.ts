@@ -97,6 +97,10 @@ function boundedInteger(value: unknown, fallback: number, minimum: number, maxim
   return Number.isInteger(value) ? Math.min(maximum, Math.max(minimum, value as number)) : fallback
 }
 
+function boundedNumber(value: unknown, fallback: number, minimum: number, maximum: number) {
+  return typeof value === 'number' && Number.isFinite(value) ? Math.min(maximum, Math.max(minimum, value)) : fallback
+}
+
 export function parseIndicatorConfig(raw: string | null, defaults: IndicatorConfig): IndicatorConfig {
   if (!raw) return defaults
   try {
@@ -117,6 +121,13 @@ export function parseIndicatorConfig(raw: string | null, defaults: IndicatorConf
       macdFast: boundedInteger(value.macdFast, defaults.macdFast, 2, 200),
       macdSlow: boundedInteger(value.macdSlow, defaults.macdSlow, 2, 200),
       macdSignal: boundedInteger(value.macdSignal, defaults.macdSignal, 2, 200),
+      bollEnabled: typeof value.bollEnabled === 'boolean' ? value.bollEnabled : defaults.bollEnabled,
+      bollPeriod: boundedInteger(value.bollPeriod, defaults.bollPeriod, 2, 500),
+      bollMultiplier: boundedNumber(value.bollMultiplier, defaults.bollMultiplier, 0.5, 5),
+      sarEnabled: typeof value.sarEnabled === 'boolean' ? value.sarEnabled : defaults.sarEnabled,
+      sarStep: boundedNumber(value.sarStep, defaults.sarStep, 0.001, 0.2),
+      sarMax: boundedNumber(value.sarMax, defaults.sarMax, 0.02, 1),
+      eventsEnabled: typeof value.eventsEnabled === 'boolean' ? value.eventsEnabled : defaults.eventsEnabled,
     }
   } catch {
     return defaults

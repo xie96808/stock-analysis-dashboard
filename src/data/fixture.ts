@@ -10,13 +10,6 @@ export type StockBar = {
   turnoverRate?: number | null
 }
 
-export type MacdPoint = {
-  date: string
-  dif: number
-  dea: number
-  histogram: number
-}
-
 export type IntradayPoint = {
   timestamp: number
   price: number
@@ -143,39 +136,26 @@ export function createFutureDates() {
   return tradingDates('2026-08-10', '2027-01-08')
 }
 
-export function ema(values: number[], period: number) {
-  const smoothing = 2 / (period + 1)
-  const result: number[] = []
-  let previous = values[0] ?? 0
-  values.forEach((value, index) => {
-    previous = index === 0 ? value : value * smoothing + previous * (1 - smoothing)
-    result.push(previous)
-  })
-  return result
-}
+import {
+  ema,
+  movingAverage,
+  calculateMacd,
+  bollingerBands,
+  parabolicSar,
+  type MacdPoint,
+  type BollingerPoint,
+  type SarPoint,
+} from '../indicators/tdx'
 
-export function movingAverage(bars: StockBar[], period: number, exponential = false) {
-  if (exponential) return ema(bars.map((bar) => bar.close), period)
-  return bars.map((_, index) => {
-    if (index + 1 < period) return null
-    const window = bars.slice(index + 1 - period, index + 1)
-    return window.reduce((sum, bar) => sum + bar.close, 0) / period
-  })
-}
-
-export function calculateMacd(bars: StockBar[], fastPeriod = 12, slowPeriod = 26, signalPeriod = 9): MacdPoint[] {
-  const closes = bars.map((bar) => bar.close)
-  const fast = ema(closes, fastPeriod)
-  const slow = ema(closes, slowPeriod)
-  const dif = fast.map((value, index) => value - slow[index])
-  const dea = ema(dif, signalPeriod)
-
-  return bars.map((bar, index) => ({
-    date: bar.date,
-    dif: dif[index],
-    dea: dea[index],
-    histogram: (dif[index] - dea[index]) * 2,
-  }))
+export {
+  ema,
+  movingAverage,
+  calculateMacd,
+  bollingerBands,
+  parabolicSar,
+  type MacdPoint,
+  type BollingerPoint,
+  type SarPoint,
 }
 
 export function createIntradayFixture(bar: StockBar): IntradayPoint[] {

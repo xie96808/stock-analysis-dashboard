@@ -1,5 +1,4 @@
-from collections.abc import Sequence
-
+from ..indicators.tdx import ema, sma
 from ..market_data.models import BarPayload
 from .models import StrategyType
 
@@ -7,23 +6,6 @@ from .models import StrategyType
 def _positive_int(parameters: dict[str, int | float], key: str, fallback: int, maximum: int = 500) -> int:
     value = parameters.get(key, fallback)
     return max(1, min(maximum, int(value)))
-
-
-def _moving_average(values: Sequence[float], period: int, index: int) -> float | None:
-    if index + 1 < period:
-        return None
-    window = values[index - period + 1:index + 1]
-    return sum(window) / period
-
-
-def _ema(values: Sequence[float], period: int) -> list[float]:
-    if not values:
-        return []
-    alpha = 2 / (period + 1)
-    result = [values[0]]
-    for value in values[1:]:
-        result.append(alpha * value + (1 - alpha) * result[-1])
-    return result
 
 
 def target_positions(
@@ -39,9 +21,11 @@ def target_positions(
         if fast >= slow:
             raise ValueError("MA fast period must be smaller than slow period")
         normalized = {"fast": fast, "slow": slow}
+        fast_ma = sma(closes, fast)
+        slow_ma = sma(closes, slow)
         for index in range(len(bars)):
-            fast_value = _moving_average(closes, fast, index)
-            slow_value = _moving_average(closes, slow, index)
+            fast_value = fast_ma[index]
+            slow_value = slow_ma[index]
             targets[index] = int(fast_value is not None and slow_value is not None and fast_value > slow_value)
         return targets, normalized
 
@@ -64,10 +48,10 @@ def target_positions(
     if fast >= slow:
         raise ValueError("MACD fast period must be smaller than slow period")
     normalized = {"fast": fast, "slow": slow, "signal": signal}
-    fast_ema = _ema(closes, fast)
-    slow_ema = _ema(closes, slow)
+    fast_ema = ema(closes, fast)
+    slow_ema = ema(closes, slow)
     dif = [fast_value - slow_value for fast_value, slow_value in zip(fast_ema, slow_ema)]
-    dea = _ema(dif, signal)
+    dea = ema(dif, signal)
     for index in range(len(bars)):
         targets[index] = int(index >= slow and dif[index] > dea[index])
     return targets, normalized

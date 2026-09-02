@@ -16,7 +16,8 @@ import {
   type UTCTimestamp,
   type WhitespaceData,
 } from 'lightweight-charts'
-import { calculateMacd, movingAverage, type StockBar } from '../data/fixture'
+import { type StockBar } from '../data/fixture'
+import { bollingerBands, calculateMacd, movingAverage, parabolicSar, volumeMovingAverage } from '../indicators/tdx'
 import { placeIntradayPrompt, supportsIntraday } from '../chart/intraday'
 import type { Drawing } from '../drawings/model'
 import { DrawingLayer } from './DrawingLayer'
@@ -43,6 +44,19 @@ export type IndicatorConfig = {
   macdFast: number
   macdSlow: number
   macdSignal: number
+  bollEnabled: boolean
+  bollPeriod: number
+  bollMultiplier: number
+  sarEnabled: boolean
+  sarStep: number
+  sarMax: number
+  eventsEnabled: boolean
+}
+
+export type CorporateEventMarker = {
+  kind: 'dividend' | 'earnings'
+  date: string
+  label: string
 }
 
 type Props = {
@@ -62,6 +76,7 @@ type Props = {
   candleTheme: 'mono' | 'cn'
   cleanMode: boolean
   indicators: IndicatorConfig
+  corporateEvents?: CorporateEventMarker[]
   activeTool: string
   snapMode: 'off' | 'weak' | 'strong'
   drawings: Drawing[]
@@ -90,6 +105,7 @@ type OverlayGeometry = {
   chartHeight: number
   width: number
   revision: number
+  events: { x: number; label: string; kind: 'dividend' | 'earnings' }[]
 }
 
 type IntradayPrompt = {
@@ -136,9 +152,7 @@ function formatVolume(value: number) {
 }
 
 function averageVolume(bars: StockBar[], length: number) {
-  const values = bars.slice(-length)
-  if (!values.length) return 0
-  return values.reduce((sum, bar) => sum + bar.volume, 0) / values.length
+  return volumeMovingAverage(bars, length).at(-1)
 }
 
 export function ChartWorkbench({
@@ -158,6 +172,7 @@ export function ChartWorkbench({
   candleTheme,
   cleanMode,
   indicators,
+  corporateEvents = [],
   activeTool,
   snapMode,
   drawings,
@@ -189,11 +204,13 @@ export function ChartWorkbench({
   const onSelectChipDateRef = useRef(onSelectChipDate)
   const activeToolRef = useRef(activeTool)
   const logPriceRef = useRef(logPrice)
+  const corporateEventsRef = useRef(corporateEvents)
   onHoverBarRef.current = onHoverBar
   onSelectBarRef.current = onSelectBar
   onSelectChipDateRef.current = onSelectChipDate
   activeToolRef.current = activeTool
   logPriceRef.current = logPrice
+  corporateEventsRef.current = corporateEvents
   const [intradayPrompt, setIntradayPrompt] = useState<IntradayPrompt | null>(null)
   const [selectedProfilePrice, setSelectedProfilePrice] = useState<number | null>(null)
   const [geometry, setGeometry] = useState<OverlayGeometry>({
@@ -208,6 +225,7 @@ export function ChartWorkbench({
     chartHeight: 0,
     width: 0,
     revision: 0,
+    events: [],
   })
 
   const byTime = useMemo(() => new Map(bars.map((bar) => [timeKey(chartTime(bar.date)), bar])), [bars])
@@ -365,6 +383,51 @@ export function ChartWorkbench({
       series.setData(values.flatMap((value, index) => value == null ? [] : [{ time: chartTime(bars[index].date), value }]))
     }
 
+    if (!cleanMode && indicators.bollEnabled) {
+      const bands = bollingerBands(bars, indicators.bollPeriod, indicators.bollMultiplier)
+      const addBand = (color: string, key: 'upper' | 'mid' | 'lower', dashed = false) => {
+        const series = chart.addSeries(LineSeries, {
+          color,
+          lineWidth: 1,
+          lineStyle: dashed ? LineStyle.Dashed : LineStyle.Solid,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+        })
+        series.setData(bands.flatMap((point) => {
+          const value = point[key]
+          return value == null ? [] : [{ time: chartTime(point.date), value }]
+        }))
+      }
+      addBand('#5b8def', 'upper')
+      addBand('#d79b27', 'mid', true)
+      addBand('#5b8def', 'lower')
+    }
+
+    if (!cleanMode && indicators.sarEnabled) {
+      const sar = parabolicSar(bars, indicators.sarStep, indicators.sarMax)
+      const addDots = (color: string, uptrend: boolean) => {
+        const data = sar.flatMap((point, index) => (
+          point && point.uptrend === uptrend
+            ? [{ time: chartTime(bars[index].date), value: point.value }]
+            : []
+        ))
+        if (!data.length) return
+        const series = chart.addSeries(LineSeries, {
+          color,
+          lineVisible: false,
+          pointMarkersVisible: true,
+          pointMarkersRadius: 3,
+          priceLineVisible: false,
+          lastValueVisible: false,
+          crosshairMarkerVisible: false,
+        })
+        series.setData(data)
+      }
+      addDots('#e95b71', true)
+      addDots('#2eaa7b', false)
+    }
+
     if (futureDates.length && latestBar) {
       const futureSpaceSeries = chart.addSeries(LineSeries, {
         color: 'rgba(255,255,255,0)',
@@ -489,6 +552,13 @@ export function ChartWorkbench({
         chartHeight: host.clientHeight,
         width: host.clientWidth,
         revision: current.revision + 1,
+        events: (!cleanMode && indicators.eventsEnabled && !isMinute)
+          ? corporateEventsRef.current.flatMap((item) => {
+            const x = chart.timeScale().timeToCoordinate(businessDay(item.date))
+            if (x == null || x < 8 || x > host.clientWidth - 8) return []
+            return [{ x, label: item.label, kind: item.kind }]
+          })
+          : [],
       }))
     }
     refreshGeometryRef.current = updateGeometry
@@ -559,6 +629,11 @@ export function ChartWorkbench({
     const frame = requestAnimationFrame(() => refreshGeometryRef.current())
     return () => cancelAnimationFrame(frame)
   }, [chipEstimate])
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => refreshGeometryRef.current())
+    return () => cancelAnimationFrame(frame)
+  }, [corporateEvents])
 
   useEffect(() => {
     if (resetViewRevision <= 0 || !chartRef.current) return
@@ -704,8 +779,8 @@ export function ChartWorkbench({
       {!cleanMode && indicators.volumeEnabled && <div className="pane-label pane-label-volume" style={{ top: geometry.mainPaneHeight + 10 }}>
         <strong>VOL</strong>
         <span>{formatVolume(latestBar?.volume ?? 0)}</span>
-        <span className="pane-label-muted">MA5 {formatVolume(averageVolume(bars, 5))}</span>
-        <span className="pane-label-muted">MA10 {formatVolume(averageVolume(bars, 10))}</span>
+        <span className="pane-label-muted">MA5 {averageVolume(bars, 5) == null ? '--' : formatVolume(averageVolume(bars, 5) as number)}</span>
+        <span className="pane-label-muted">MA10 {averageVolume(bars, 10) == null ? '--' : formatVolume(averageVolume(bars, 10) as number)}</span>
       </div>}
       {!cleanMode && indicators.macdEnabled && <div className="pane-label pane-label-macd" style={{ top: geometry.mainPaneHeight + (indicators.volumeEnabled ? 124 : 10) }}>
         <strong>MACD {indicators.macdFast} {indicators.macdSlow} {indicators.macdSignal}</strong>
@@ -758,6 +833,15 @@ export function ChartWorkbench({
         </div>
       )}
 
+      {!cleanMode && geometry.events.map((item, index) => (
+        <div
+          key={`${item.kind}-${item.label}-${item.x}`}
+          className={`chart-event-marker is-${item.kind}`}
+          style={{ left: item.x, height: geometry.mainPaneHeight }}
+        >
+          <span style={{ top: 8 + index * 20 }}>{item.label}</span>
+        </div>
+      ))}
       <div className="chart-watermark">{instrumentLabel}</div>
     </div>
   )

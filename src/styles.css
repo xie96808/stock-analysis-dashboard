@@ -1393,6 +1393,33 @@ button {
   background: #e9efff;
 }
 
+.chart-event-marker {
+  position: absolute;
+  top: 0;
+  z-index: 5;
+  pointer-events: none;
+  border-left: 1px dashed rgba(41, 98, 232, 0.5);
+}
+
+.chart-event-marker.is-earnings {
+  border-left-color: rgba(216, 146, 32, 0.7);
+}
+
+.chart-event-marker span {
+  position: absolute;
+  left: 6px;
+  max-width: 148px;
+  overflow: hidden;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .chart-watermark {
   position: absolute;
   top: 48%;
@@ -1834,6 +1861,37 @@ button {
   stroke-width: 3px;
   stroke-linejoin: round;
   pointer-events: all;
+}
+
+.drawing-price-editor {
+  position: absolute;
+  z-index: 14;
+  display: flex;
+  align-items: center;
+  padding: 4px 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 8px 20px rgba(24, 30, 42, 0.14);
+}
+
+.drawing-price-editor label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.drawing-price-editor input {
+  width: 108px;
+  height: 26px;
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .drawing-inspector {

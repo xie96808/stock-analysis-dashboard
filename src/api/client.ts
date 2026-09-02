@@ -61,6 +61,17 @@ export type MarketBarsResponse = {
   bars: MarketBar[]
 }
 
+export type CorporateEvent = {
+  kind: 'dividend' | 'earnings'
+  date: string
+  label: string
+}
+
+export type CorporateEventsResponse = {
+  instrument: { symbol: string; market: 'CN' | 'HK' }
+  events: CorporateEvent[]
+}
+
 export type MarketQuoteResponse = {
   instrument: MarketInstrument
   last: number
@@ -356,6 +367,10 @@ export function getMarketBars(
   if (cached) return Promise.resolve({ ...cached, cached: true })
   return requestJson<MarketBarsResponse>(path, signal)
     .then((response) => response.stale ? response : writeMarketCache(marketBarsMemoryCache, cacheKey, response))
+}
+
+export function getCorporateEvents(symbol: string, signal?: AbortSignal) {
+  return requestJson<CorporateEventsResponse>(`/api/market/events/${encodeURIComponent(symbol)}`, signal)
 }
 
 export function getMarketQuote(symbol: string, signal?: AbortSignal, refresh = false) {
