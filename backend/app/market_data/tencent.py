@@ -152,10 +152,10 @@ class TencentProvider:
         preferred_key = {"none": "day", "qfq": "qfqday", "hfq": "hfqday"}[adjustment]
         used_key = preferred_key
         rows = node.get(preferred_key) or []
-        # Tencent HK daily payloads expose `day` only. Refusing qfqday here
-        # used to fail the whole chain and hit Yahoo 403. Fall back to
+        # Tencent often omits qfqday/hfqday (HK names, many ETFs). Refusing
+        # that used to fail the whole chain and hit Yahoo 403. Fall back to
         # unadjusted bars and let the service label adjustment_applied.
-        if not rows and instrument.market == "HK" and preferred_key != "day":
+        if not rows and preferred_key != "day":
             rows = node.get("day") or []
             used_key = "day"
             if not rows:

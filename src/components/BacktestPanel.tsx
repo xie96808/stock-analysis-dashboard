@@ -50,7 +50,13 @@ export function BacktestPanel({ symbol, name, market, onClose, onMessage }: Prop
     }).join(' ')
   }, [result])
 
+  const datesReady = Boolean(startDate && endDate)
+
   const execute = async () => {
+    if (!datesReady) {
+      onMessage('请先选择开始日期和结束日期')
+      return
+    }
     setRunning(true)
     try {
       let parameters: Record<string, number>
@@ -97,13 +103,13 @@ export function BacktestPanel({ symbol, name, market, onClose, onMessage }: Prop
               {strategy === 'macd' && <label>信号线<input aria-label="MACD信号周期" type="number" min="2" max="100" value={signal} onChange={(event) => setSignal(Number(event.target.value))} /></label>}
             </div>
             <label>初始资金<input aria-label="回测初始资金" type="number" min="1000" step="10000" value={initialCash} onChange={(event) => setInitialCash(Number(event.target.value))} /></label>
-            <label>开始日期<input aria-label="回测开始日期" type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
-            <label>结束日期<input aria-label="回测结束日期" type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
+            <label>开始日期<input aria-label="回测开始日期" type="date" required value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
+            <label>结束日期<input aria-label="回测结束日期" type="date" required value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
             <div className="backtest-assumptions"><strong>撮合假设</strong><span>佣金 0.03% · 最低5元</span><span>{market === 'CN' ? '卖出印花税 0.05% · 100股整手 · T+1' : '港股印花税暂设0 · 1股整手'}</span><span>滑点 2bp · 停牌/涨跌停不成交</span></div>
-            <button className="backtest-run" type="button" disabled={running} onClick={execute}><Icon name="play" />{running ? '计算中…' : '运行回测'}</button>
+            <button className="backtest-run" type="button" disabled={running || !datesReady} title={datesReady ? undefined : '请先选择开始和结束日期'} onClick={execute}><Icon name="play" />{running ? '计算中…' : datesReady ? '运行回测' : '请选择日期'}</button>
           </aside>
           <main className="backtest-results">
-            {!result ? <div className="backtest-empty"><Icon name="chart" /><strong>设置策略后运行回测</strong><span>结果会展示资金曲线、风险收益和逐笔成交。</span></div> : <>
+            {!result ? <div className="backtest-empty"><Icon name="chart" /><strong>选择日期区间后再运行回测</strong><span>开始和结束日期都选好后才会计算资金曲线、风险收益和逐笔成交。</span></div> : <>
               <div className="backtest-result-heading"><div><strong>{strategyLabels[result.strategy]}</strong><span>{result.start_date} — {result.end_date}</span></div><span>{result.data_source}</span></div>
               <div className="backtest-metrics">
                 <div><span>总收益</span><strong className={result.metrics.total_return >= 0 ? 'is-positive' : 'is-negative'}>{formatMetricPercent(result.metrics.total_return)}</strong></div>

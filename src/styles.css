@@ -704,14 +704,23 @@ button {
 .chart-toolbar {
   display: flex;
   align-items: center;
+  flex-wrap: nowrap;
   gap: 4px;
   padding: 0 12px 0 58px;
   box-shadow: 0 1px 0 rgba(20, 27, 38, 0.02);
+  overflow-x: auto;
+  scrollbar-width: thin;
+  white-space: nowrap;
+}
+
+.chart-toolbar > * {
+  flex: 0 0 auto;
 }
 
 .timeframes {
   display: flex;
   align-items: center;
+  flex: 0 0 auto;
 }
 
 .timeframes button,
@@ -731,6 +740,8 @@ button {
 .timeframes button {
   min-width: 44px;
   padding: 0 9px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .timeframes button:hover,
@@ -765,6 +776,12 @@ button {
   color: var(--muted);
   cursor: pointer;
   font-size: 14px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.inline-select > span {
+  white-space: nowrap;
 }
 
 .inline-select:hover {
@@ -787,6 +804,8 @@ button {
 .toolbar-toggle,
 .toolbar-action {
   padding: 0 10px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .toolbar-toggle.is-active {
@@ -804,6 +823,13 @@ button {
   border: 1px solid #dfe3ea;
   border-radius: 6px;
   background: #f7f8fa;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.distribution-switch button {
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .distribution-switch > span {

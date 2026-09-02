@@ -1,7 +1,6 @@
 import asyncio
 
 from backend.app.market_data.symbols import normalize_symbol
-from backend.app.market_data.base import ProviderError
 from backend.app.market_data.tencent import TencentProvider
 
 
@@ -120,11 +119,10 @@ def test_daily_bars_do_not_silently_relabel_unadjusted_as_qfq() -> None:
             return FakeResponse()
 
     provider = TencentProvider(client=FakeClient())  # type: ignore[arg-type]
-    try:
-        asyncio.run(provider.daily_bars(normalize_symbol("001280"), "qfq", 20))
-        raise AssertionError("expected ProviderError")
-    except ProviderError as error:
-        assert "qfqday" in str(error)
+    bars, name, node = asyncio.run(provider.daily_bars(normalize_symbol("001280"), "qfq", 20))
+    assert name == "测试标的"
+    assert bars[0].close == 11
+    assert node["_bar_series"] == "day"
 
 
 def test_daily_bars_use_the_requested_adjustment_series() -> None:
@@ -179,4 +177,31 @@ def test_daily_bars_hk_falls_back_to_unadjusted_when_qfqday_missing() -> None:
     bars, name, node = asyncio.run(provider.daily_bars(normalize_symbol("hk00311"), "qfq", 20))
     assert name == "仁山智库"
     assert bars[0].close == 11
+    assert node["_bar_series"] == "day"
+
+
+def test_daily_bars_etf_falls_back_to_unadjusted_when_qfqday_missing() -> None:
+    payload = {
+        "code": 0,
+        "data": {"sh513750": {
+            "day": [["2026-08-28", "1.5", "1.55", "1.6", "1.4", "100"]],
+            "qt": {"sh513750": ["", "港股通非银ETF广发"]},
+        }},
+    }
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return payload
+
+    class FakeClient:
+        async def get(self, url: str, params: dict[str, str]) -> FakeResponse:
+            return FakeResponse()
+
+    provider = TencentProvider(client=FakeClient())  # type: ignore[arg-type]
+    bars, name, node = asyncio.run(provider.daily_bars(normalize_symbol("513750"), "qfq", 20))
+    assert name == "港股通非银ETF广发"
+    assert bars[0].close == 1.55
     assert node["_bar_series"] == "day"

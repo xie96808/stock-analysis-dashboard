@@ -230,7 +230,7 @@ class MarketDataService:
                 self._record_provider_result(provider.name, None)
                 issues = self._quality_issues(bars)
                 if applied_adjustment != adjustment:
-                    issues.append("腾讯港股日线无前复权序列，已使用不复权")
+                    issues.append("数据源无对应复权序列，已使用不复权")
                 if provider.name == "yahoo-chart":
                     issues.append("备用源不提供成交额与换手率")
                 if instrument.market == "HK" and timeframe.endswith("m") and provider.name == "tencent-public":
