@@ -18,6 +18,7 @@ import {
 } from 'lightweight-charts'
 import { type StockBar } from '../data/fixture'
 import { bollingerBands, calculateMacd, movingAverage, parabolicSar, volumeMovingAverage } from '../indicators/tdx'
+import { priceFractionDigits } from '../market/priceFormat'
 import { placeIntradayPrompt, supportsIntraday } from '../chart/intraday'
 import type { Drawing } from '../drawings/model'
 import { DrawingLayer } from './DrawingLayer'
@@ -293,7 +294,7 @@ export function ChartWorkbench({
       },
       localization: {
         locale: 'zh-CN',
-        priceFormatter: (price: number) => price.toFixed(2),
+        priceFormatter: (price: number) => price.toFixed(priceFractionDigits(symbol, market)),
         timeFormatter: formatTime,
       },
       grid: {
@@ -822,8 +823,8 @@ export function ChartWorkbench({
             </div>
           )}
           <div className="profile-legend">
-            <span><i className="legend-sell" />主动卖</span>
-            <span><i className="legend-buy" />主动买</span>
+            <span><i className="legend-sell" />估算卖量</span>
+            <span><i className="legend-buy" />估算买量</span>
           </div>
           {profileLevels.map((level) => (
             <div key={level.name} className={`profile-level is-${level.name.toLowerCase()}`} style={{ top: level.y }}>
