@@ -296,7 +296,11 @@ class MarketDataService:
         # HK intraday v4 uses multi-session data and session-aware aggregation.
         # Keep it separate from older one-session cache files whose bucket
         # timestamps would otherwise be merged into the corrected candles.
-        cache_version = "v4" if instrument.market == "HK" and timeframe.endswith("m") else "v3"
+        # CN v5: STAR (688/689) volume stays in 股; drop fake CN minute amount.
+        if instrument.market == "HK" and timeframe.endswith("m"):
+            cache_version = "v4"
+        else:
+            cache_version = "v5"
         cache_key = f"{cache_version}-{instrument.provider_symbol}-{timeframe}-{adjustment}"
         cached_value = None if refresh else self.cache.get(cache_key, self._ttl(timeframe))
         if cached_value and cached_value.get("requested_limit", 0) >= normalized_limit:
