@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPaperTrade, deletePaperTrade, getPaperPortfolio, type PaperPortfolio } from '../api/client'
+import { formatPrice, priceFractionDigits } from '../market/priceFormat'
 import { useEscapeToClose } from '../ui/useEscapeToClose'
 
 type Props = {
@@ -18,7 +19,7 @@ function money(value: number) {
 export function PortfolioPanel({ symbol, name, market, currentPrice, onClose, onMessage }: Props) {
   const [portfolio, setPortfolio] = useState<PaperPortfolio | null>(null)
   const [side, setSide] = useState<'buy' | 'sell'>('buy')
-  const [price, setPrice] = useState(currentPrice.toFixed(2))
+  const [price, setPrice] = useState(formatPrice(currentPrice, symbol, market))
   const [quantity, setQuantity] = useState(market === 'CN' ? 100 : 1)
   const [note, setNote] = useState('')
   const [loading, setLoading] = useState(true)
@@ -35,7 +36,7 @@ export function PortfolioPanel({ symbol, name, market, currentPrice, onClose, on
     return () => controller.abort()
   }, [onMessage])
 
-  useEffect(() => setPrice(currentPrice.toFixed(2)), [currentPrice, symbol])
+  useEffect(() => setPrice(formatPrice(currentPrice, symbol, market)), [currentPrice, market, symbol])
 
   const currentPosition = portfolio?.positions.find((item) => item.symbol === symbol)
   const estimatedEquity = useMemo(() => {
@@ -93,9 +94,9 @@ export function PortfolioPanel({ symbol, name, market, currentPrice, onClose, on
       </div>
       <div className="portfolio-body">
         <aside className="paper-order">
-          <div className="paper-order-symbol"><span>{market === 'CN' ? 'A股' : '港股'}</span><strong>{name}</strong><small>{symbol} · 最新 {currentPrice.toFixed(2)}</small></div>
+          <div className="paper-order-symbol"><span>{market === 'CN' ? 'A股' : '港股'}</span><strong>{name}</strong><small>{symbol} · 最新 {formatPrice(currentPrice, symbol, market)}</small></div>
           <div className="paper-side"><button type="button" className={side === 'buy' ? 'is-buy' : ''} onClick={() => setSide('buy')}>模拟买入</button><button type="button" className={side === 'sell' ? 'is-sell' : ''} onClick={() => setSide('sell')}>模拟卖出</button></div>
-          <label>成交价<input aria-label="模拟成交价" type="number" min="0.01" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} /></label>
+          <label>成交价<input aria-label="模拟成交价" type="number" min="0.001" step={priceFractionDigits(symbol, market) === 3 ? "0.001" : "0.01"} value={price} onChange={(event) => setPrice(event.target.value)} /></label>
           <label>数量<input aria-label="模拟成交数量" type="number" min="1" step={market === 'CN' ? 100 : 1} value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} /></label>
           <label>交易备注<textarea aria-label="模拟交易备注" rows={3} value={note} placeholder="记录本次模拟交易的依据" onChange={(event) => setNote(event.target.value)} /></label>
           <div className="paper-position-hint">{currentPosition ? <>当前持仓 <strong>{currentPosition.quantity}股</strong><span>成本 {currentPosition.average_cost.toFixed(2)} · 浮动 {money((currentPrice - currentPosition.average_cost) * currentPosition.quantity)}</span></> : <span>当前股票暂无模拟持仓</span>}</div>

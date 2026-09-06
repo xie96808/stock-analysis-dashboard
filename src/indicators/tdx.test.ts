@@ -82,7 +82,7 @@ describe('Wilder / Tongdaxin SAR', () => {
       return { date: `2026-02-${String(index + 11).padStart(2, '0')}`, high: close + 0.4, low: close - 0.9, close }
     })
     const sar = parabolicSar([...rising, ...falling], 0.02, 0.2)
-    expect(sar[0]?.value).toBe(9.5)
+    expect(sar[0]).toBeNull()
     expect(sar[3]?.value).toBeCloseTo(9.68, 10)
     expect(sar[4]?.value).toBeCloseTo(9.9856, 10)
     expect(sar[9]?.value).toBeCloseTo(13.75959277, 7)
@@ -92,5 +92,13 @@ describe('Wilder / Tongdaxin SAR', () => {
     expect(sar[13]?.value).toBeCloseTo(19.412, 10)
     expect(sar[15]?.value).toBeCloseTo(18.7547488, 7)
     expect(sar[15]?.uptrend).toBe(false)
+  })
+
+  it('keeps the first point null when a second bar arrives (no lookahead rewrite)', () => {
+    const first = [{ date: '2026-01-01', high: 11, low: 9, close: 10 }]
+    expect(parabolicSar(first)[0]).toBeNull()
+    const second = [...first, { date: '2026-01-02', high: 10, low: 8, close: 9 }]
+    expect(parabolicSar(second)[0]).toBeNull()
+    expect(parabolicSar(second)[1]?.uptrend).toBe(false)
   })
 })

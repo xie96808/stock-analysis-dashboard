@@ -103,12 +103,14 @@ export function bollingerBands(bars: IndicatorBar[], period = 20, multiplier = 2
  */
 export function parabolicSar(bars: IndicatorBar[], step = 0.02, maximum = 0.2): Array<SarPoint | null> {
   if (bars.length === 0) return []
-  if (bars.length === 1) return [{ date: bars[0].date, value: bars[0].low, uptrend: true }]
+  // First bar has no SAR: seeding the trend needs bars[1], so emitting a
+  // value at index 0 would rewrite history when the second bar arrives.
+  if (bars.length === 1) return [null]
   let uptrend = bars[1].close >= bars[0].close
   let sar = uptrend ? bars[0].low : bars[0].high
   let extreme = uptrend ? bars[0].high : bars[0].low
   let acceleration = step
-  const result: Array<SarPoint | null> = [{ date: bars[0].date, value: sar, uptrend }]
+  const result: Array<SarPoint | null> = [null]
   for (let index = 1; index < bars.length; index += 1) {
     const bar = bars[index]
     const previous = bars[index - 1]

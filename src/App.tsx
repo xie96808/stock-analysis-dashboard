@@ -37,6 +37,7 @@ import { BacktestPanel } from './components/BacktestPanel'
 import { AlertPanel } from './components/AlertPanel'
 import { WatchlistPanel } from './components/WatchlistPanel'
 import { PortfolioPanel } from './components/PortfolioPanel'
+import { formatPrice } from './market/priceFormat'
 import { ProviderPanel } from './components/ProviderPanel'
 import { Icon } from './components/Icon'
 import { IntradayView } from './components/IntradayView'
@@ -270,6 +271,7 @@ export default function App() {
   const [marketMeta, setMarketMeta] = useState({
     source: 'deterministic-fixture', cached: false, delayed: true, fetchedAt: null as string | null,
     fallbackUsed: false, stale: false, freshnessSeconds: 0, qualityIssues: [] as string[], providerChain: [] as string[],
+    adjustmentApplied: 'qfq' as MarketAdjustment,
   })
   const [hoverBar, setHoverBar] = useState<StockBar | null>(null)
   const [logPrice, setLogPrice] = useState(true)
@@ -417,7 +419,9 @@ export default function App() {
   const priceChange = latestPrice - referenceClose
   const priceChangePercent = referenceClose ? priceChange / referenceClose * 100 : 0
   const displayName = instrument.name || instrument.symbol
-  const adjustmentLabel = adjustmentLabels[adjustment]
+  const adjustmentLabel = marketMeta.adjustmentApplied === adjustment
+    ? adjustmentLabels[adjustment]
+    : `请求${adjustmentLabels[adjustment]} · 实际${adjustmentLabels[marketMeta.adjustmentApplied]}`
   const workspaceKey = `${instrument.key}::${workspace}`
   const drawings = drawingStore.workspaces[workspaceKey] ?? []
   const hiddenDrawingCount = drawings.filter((drawing) => drawing.hidden).length
@@ -748,6 +752,7 @@ export default function App() {
           freshnessSeconds: response.freshness_seconds,
           qualityIssues: response.quality_issues,
           providerChain: response.provider_chain,
+          adjustmentApplied: response.adjustment_applied,
         })
         setMarketState('ready')
         setInstrumentSwitchLabel(null)
@@ -771,6 +776,7 @@ export default function App() {
           setMarketMeta({
             source: 'deterministic-fixture', cached: false, delayed: true, fetchedAt: null,
             fallbackUsed: false, stale: false, freshnessSeconds: 0, qualityIssues: [], providerChain: [],
+            adjustmentApplied: 'qfq',
           })
           setMarketState('fallback')
           setInstrumentSwitchLabel(null)
@@ -1408,17 +1414,17 @@ export default function App() {
             <span className="market-tag">{instrument.exchange}</span>
           </div>
           <div className="instrument-price">
-            <strong>{latestPrice.toFixed(2)}</strong>
-            <span className={priceChange >= 0 ? '' : 'is-negative'}>{priceChange >= 0 ? '+' : ''}{priceChange.toFixed(2)}</span>
+            <strong>{formatPrice(latestPrice, instrument.symbol, instrument.market)}</strong>
+            <span className={priceChange >= 0 ? '' : 'is-negative'}>{priceChange >= 0 ? '+' : ''}{formatPrice(priceChange, instrument.symbol, instrument.market)}</span>
             <span className={priceChangePercent >= 0 ? '' : 'is-negative'}>{priceChangePercent >= 0 ? '+' : ''}{priceChangePercent.toFixed(2)}%</span>
           </div>
         </div>
 
         <div className="ohlc-strip">
-          <span><small>开</small><b>{displayBar.open.toFixed(2)}</b></span>
-          <span><small>高</small><b>{displayBar.high.toFixed(2)}</b></span>
-          <span><small>低</small><b>{displayBar.low.toFixed(2)}</b></span>
-          <span><small>收</small><b>{displayBar.close.toFixed(2)}</b></span>
+          <span><small>开</small><b>{formatPrice(displayBar.open, instrument.symbol, instrument.market)}</b></span>
+          <span><small>高</small><b>{formatPrice(displayBar.high, instrument.symbol, instrument.market)}</b></span>
+          <span><small>低</small><b>{formatPrice(displayBar.low, instrument.symbol, instrument.market)}</b></span>
+          <span><small>收</small><b>{formatPrice(displayBar.close, instrument.symbol, instrument.market)}</b></span>
           <span><small>成交量</small><b>{compactVolume(hoverBar ? displayBar.volume : (quote?.volume ?? displayBar.volume))}</b></span>
           <span className="quote-date"><small>数据日期</small><b>{displayDate}</b></span>
         </div>
