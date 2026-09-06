@@ -72,7 +72,7 @@ export function BacktestPanel({ symbol, name, market, onClose, onMessage }: Prop
         initial_cash: initialCash,
         commission_rate: 0.0003,
         minimum_commission: 5,
-        stamp_tax_rate: market === 'CN' ? 0.0005 : 0,
+        stamp_tax_rate: market === 'CN' && !/^(15|16|18|50|51|56|58)/.test(symbol) ? 0.0005 : 0,
         slippage_bps: 2,
         lot_size: market === 'CN' ? 100 : 1,
       })
@@ -105,7 +105,7 @@ export function BacktestPanel({ symbol, name, market, onClose, onMessage }: Prop
             <label>初始资金<input aria-label="回测初始资金" type="number" min="1000" step="10000" value={initialCash} onChange={(event) => setInitialCash(Number(event.target.value))} /></label>
             <label>开始日期<input aria-label="回测开始日期" type="date" required value={startDate} onChange={(event) => setStartDate(event.target.value)} /></label>
             <label>结束日期<input aria-label="回测结束日期" type="date" required value={endDate} onChange={(event) => setEndDate(event.target.value)} /></label>
-            <div className="backtest-assumptions"><strong>撮合假设</strong><span>佣金 0.03% · 最低5元</span><span>{market === 'CN' ? '卖出印花税 0.05% · 100股整手 · T+1' : '港股印花税暂设0 · 1股整手'}</span><span>滑点 2bp · 停牌/涨跌停不成交</span></div>
+            <div className="backtest-assumptions"><strong>撮合假设</strong><span>佣金 0.03% · 最低5元</span><span>{market === 'CN' ? (/^(15|16|18|50|51|56|58)/.test(symbol) ? 'ETF/基金免印花税 · 100股整手 · T+1' : '卖出印花税 0.05% · 100股整手 · T+1') : '港股印花税暂设0 · 1股整手'}</span><span>滑点 2bp · 停牌/涨跌停不成交</span></div>
             <button className="backtest-run" type="button" disabled={running || !datesReady} title={datesReady ? undefined : '请先选择开始和结束日期'} onClick={execute}><Icon name="play" />{running ? '计算中…' : datesReady ? '运行回测' : '请选择日期'}</button>
           </aside>
           <main className="backtest-results">
