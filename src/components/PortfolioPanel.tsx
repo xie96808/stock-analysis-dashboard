@@ -84,7 +84,7 @@ export function PortfolioPanel({ symbol, name, market, currentPrice, onClose, on
 
   return <div className="portfolio-backdrop" role="dialog" aria-modal="true" aria-label="模拟持仓">
     <section className="portfolio-dialog">
-      <header><div><span className="eyebrow">Paper Portfolio</span><h2>模拟持仓</h2><p>本地 SQLite 账本 · 自动佣金与 A 股卖出印花税</p></div><button type="button" aria-label="关闭模拟持仓" onClick={onClose}>×</button></header>
+      <header><div><span className="eyebrow">Paper Portfolio</span><h2>模拟持仓</h2><p>本地 SQLite 账本 · 自动佣金；股票卖出印花税、ETF 免收</p></div><button type="button" aria-label="关闭模拟持仓" onClick={onClose}>×</button></header>
       <div className="portfolio-summary">
         <div><span>估算总资产</span><strong>¥{money(estimatedEquity)}</strong><small>当前股票按最新价，其余按成本</small></div>
         <div><span>可用资金</span><strong>¥{money(portfolio?.cash ?? 0)}</strong><small>初始 ¥100,000</small></div>
@@ -98,9 +98,9 @@ export function PortfolioPanel({ symbol, name, market, currentPrice, onClose, on
           <label>成交价<input aria-label="模拟成交价" type="number" min="0.01" step="0.01" value={price} onChange={(event) => setPrice(event.target.value)} /></label>
           <label>数量<input aria-label="模拟成交数量" type="number" min="1" step={market === 'CN' ? 100 : 1} value={quantity} onChange={(event) => setQuantity(Number(event.target.value))} /></label>
           <label>交易备注<textarea aria-label="模拟交易备注" rows={3} value={note} placeholder="记录本次模拟交易的依据" onChange={(event) => setNote(event.target.value)} /></label>
-          <div className="paper-position-hint">{currentPosition ? <>当前持仓 <strong>{currentPosition.quantity}股</strong><span>成本 {currentPosition.average_cost.toFixed(2)} · 浮动 {money((currentPrice - currentPosition.average_cost) * currentPosition.quantity)}</span></> : <span>当前股票暂无模拟持仓</span>}</div>
+          <div className="paper-position-hint">{currentPosition ? <>当前持仓 <strong>{currentPosition.quantity}股</strong><span>成本 {currentPosition.average_cost.toFixed(2)} · 浮动 {money(currentPrice * currentPosition.quantity - currentPosition.cost_value)}</span></> : <span>当前股票暂无模拟持仓</span>}</div>
           <button type="button" className={`paper-submit is-${side}`} disabled={loading} onClick={submit}>{loading ? '处理中…' : `确认${side === 'buy' ? '买入' : '卖出'}`}</button>
-          <small>默认佣金 0.03%（最低5元）；A股卖出另计 0.05% 印花税。</small>
+          <small>默认佣金 0.03%（最低5元）；A股股票卖出另计 0.05% 印花税，ETF/基金免印花税。</small>
         </aside>
         <main className="portfolio-ledger">
           <section><div className="portfolio-section-heading"><strong>持仓</strong><span>{portfolio?.positions.length ?? 0}</span></div><div className="paper-positions">

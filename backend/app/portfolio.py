@@ -60,10 +60,20 @@ class PaperPortfolioRepository:
         return datetime.now(UTC).isoformat()
 
     @staticmethod
-    def _automatic_fees(payload: PaperTradeInput) -> float:
+    def _cn_stamp_tax_applies(symbol: str) -> bool:
+        """A-share stock sells pay stamp tax; ETF/LOF fund codes do not."""
+        # SZSE funds/ETFs 15/16/18xxxx; SSE funds/ETFs 50/51/56/58xxxx.
+        return not symbol.startswith(("15", "16", "18", "50", "51", "56", "58"))
+
+    @classmethod
+    def _automatic_fees(cls, payload: PaperTradeInput) -> float:
         gross = payload.price * payload.quantity
         commission = max(5.0, gross * 0.0003)
-        stamp_tax = gross * 0.0005 if payload.market == "CN" and payload.side == "sell" else 0.0
+        stamp_tax = (
+            gross * 0.0005
+            if payload.market == "CN" and payload.side == "sell" and cls._cn_stamp_tax_applies(payload.symbol)
+            else 0.0
+        )
         return round(commission + stamp_tax, 2)
 
     def _rows(self, connection: sqlite3.Connection | None = None) -> list[sqlite3.Row]:
@@ -130,13 +140,10 @@ class PaperPortfolioRepository:
         fees = payload.fees if payload.fees is not None else self._automatic_fees(payload)
         traded_at = payload.traded_at or self._now()
         trade_id = str(uuid.uuid4())
+        # Insert as a candidate, then recompute the whole ledger in time order
+        # inside the same transaction. A backdated sell that fails chronologically
+        # must roll back — never leave an orphan row that makes snapshot() 500.
         with self.connect() as connection:
-            current = self._calculate(self._rows(connection))
-            position = next((item for item in current["positions"] if item["symbol"] == payload.symbol), None)
-            if payload.side == "buy" and payload.price * payload.quantity + fees > current["cash"] + 1e-6:
-                raise ValueError("模拟账户可用资金不足")
-            if payload.side == "sell" and (position is None or payload.quantity > position["quantity"]):
-                raise ValueError(f"{payload.symbol}模拟持仓数量不足")
             connection.execute(
                 """INSERT INTO paper_trades
                 (id, symbol, name, market, side, price, quantity, fees, traded_at, note, journal_record_id)
@@ -144,7 +151,7 @@ class PaperPortfolioRepository:
                 (trade_id, payload.symbol, payload.name, payload.market, payload.side, payload.price,
                  payload.quantity, fees, traded_at, payload.note, payload.journal_record_id),
             )
-        return self.snapshot()
+            return self._calculate(self._rows(connection))
 
     def delete_trade(self, trade_id: str) -> dict[str, Any]:
         with self.connect() as connection:
