@@ -233,7 +233,7 @@ def test_smaller_background_refresh_preserves_larger_cache_coverage(tmp_path: Pa
         await asyncio.gather(*list(service._refresh_tasks))
 
     asyncio.run(run())
-    cached = service.cache.get_any("v3-sz001280-1d-qfq")
+    cached = service.cache.get_any("v5-sz001280-1d-qfq")
     assert cached is not None
     assert cached["requested_limit"] == 2000
 

@@ -111,8 +111,20 @@ class TencentProvider:
         return self._parse_search_payload(payload, value, limit)
 
     @staticmethod
-    def _volume_multiplier(instrument: Instrument) -> int:
-        return 100 if instrument.market == "CN" else 1
+    def _volume_in_lots(instrument: Instrument) -> bool:
+        """Whether Tencent reports this symbol's volume in 手 (lots of 100).
+
+        Mainland mainboard / ChiNext / BSE / ETF kline+quote volume is in 手.
+        STAR board (科创板 688/689) already reports 股 — do not multiply again.
+        HK volumes are shares.
+        """
+        if instrument.market != "CN":
+            return False
+        return not instrument.symbol.startswith(("688", "689"))
+
+    @classmethod
+    def _volume_multiplier(cls, instrument: Instrument) -> int:
+        return 100 if cls._volume_in_lots(instrument) else 1
 
     @staticmethod
     def _instrument_name(payload: dict[str, Any], provider_symbol: str) -> str | None:
@@ -216,7 +228,9 @@ class TencentProvider:
                 high=float(row[3]),
                 low=float(row[4]),
                 volume=float(row[5]) * multiplier,
-                amount=float(row[7]) * 10_000 if len(row) > 7 and row[7] not in (None, "") else None,
+                # CN mkline row[7] is not turnover (values like 5.97 fail
+                # low*volume ≤ amount ≤ high*volume). Prefer null over a fake.
+                amount=None,
             )
             for row in rows
             if len(row) >= 6 and len(str(row[0])) >= 12
